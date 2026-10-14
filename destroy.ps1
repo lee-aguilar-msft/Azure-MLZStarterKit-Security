@@ -217,6 +217,33 @@ if ($jobs.Count -gt 0) {
     Write-Host "  No resource groups to delete." -ForegroundColor Gray
 }
 
+# MLZ enables NSG flow logs on every VNet; those live in NetworkWatcherRG (outside the naming prefix)
+# and would otherwise be left behind pointing at a deleted storage account.
+Write-Host "`n[1b/4] Removing NSG flow logs created for this deployment (NetworkWatcherRG)..." -ForegroundColor Cyan
+# (az network watcher flow-log list returns nothing in some clouds, so go through the generic resource API)
+$flowLogs = @(az resource list --resource-type "Microsoft.Network/networkWatchers/flowLogs" --query "[?contains(name,'$rgPrefix')].id" -o tsv 2>$null)
+foreach ($fl in $flowLogs) {
+    if ($fl) {
+        Write-Host "  Deleting flow log $($fl.Split('/')[-1])" -ForegroundColor Yellow
+        az resource delete --ids $fl 2>$null | Out-Null
+    }
+}
+if ($flowLogs.Count -eq 0) { Write-Host "  None found." -ForegroundColor Gray }
+
+# Safety net: a workspace can still land in the soft-deleted state (the first real teardown showed this even
+# after --force). Recover it into a throw-away RG, force-delete it, drop the RG — so the next deployment
+# creates a brand-new workspace instead of silently recovering the old one.
+$ghosts = @(az monitor log-analytics workspace list-deleted-workspaces --query "[?starts_with(name,'$rgPrefix')].{n:name,rg:resourceGroup}" -o json 2>$null | ConvertFrom-Json)
+foreach ($g in $ghosts) {
+    if ($g -and $g.n) {
+        Write-Host "  Purging soft-deleted workspace $($g.n) (recover -> force delete)" -ForegroundColor Yellow
+        az group create -n $g.rg -l $Location -o none 2>$null
+        az monitor log-analytics workspace recover -g $g.rg -n $g.n -o none 2>$null
+        az monitor log-analytics workspace delete -g $g.rg -n $g.n --force true --yes 2>$null | Out-Null
+        az group delete -n $g.rg --yes 2>$null | Out-Null
+    }
+}
+
 # Purge the soft-deleted Key Vaults now that their resource groups are gone
 foreach ($kv in $vaultsToPurge) {
     Write-Host "  Purging soft-deleted Key Vault $kv" -ForegroundColor Yellow
