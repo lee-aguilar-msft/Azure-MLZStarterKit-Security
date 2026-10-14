@@ -1650,7 +1650,7 @@
       "resourceGroup": "[variables('tier3ResourceGroupName')]",
       "dependsOn": [
         "[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]",
-        "[resourceId('Microsoft.Resources/deployments', variables('labVmDeploymentName'))]"
+        "[variables('labVmDeploymentName')]"
       ],
       "properties": {
         "expressionEvaluationOptions": {
@@ -1677,12 +1677,6 @@
           "retentionInDays": {
             "value": 90
           },
-          "vmNames": {
-            "value": "[reference(resourceId(subscription().subscriptionId, variables('tier3ResourceGroupName'), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01').outputs.windowsVmNames.value]"
-          },
-          "linuxVmNames": {
-            "value": "[reference(resourceId(subscription().subscriptionId, variables('tier3ResourceGroupName'), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01').outputs.linuxVmNames.value]"
-          },
           "usePrivateIngestion": {
             "value": "[parameters('usePrivateIngestion')]"
           },
@@ -1700,6 +1694,9 @@
           },
           "resourceGroupName": {
             "value": "[variables('tier3ResourceGroupName')]"
+          },
+          "deployLinuxVms": {
+            "value": "[parameters('deployLinuxVms')]"
           }
         }
       }
