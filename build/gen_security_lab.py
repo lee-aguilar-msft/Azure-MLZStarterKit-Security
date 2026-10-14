@@ -144,7 +144,8 @@ R.append({
 # --- DCR associations (Windows) ---
 R.append({
     "type": "Microsoft.Insights/dataCollectionRuleAssociations", "apiVersion": "2022-06-01",
-    "name": "[format('{0}/Microsoft.Insights/{1}-assoc', variables('winNames')[copyIndex()], variables('winDcrName'))]",
+    # extension resource: single-segment name + scope (a 3-segment name is rejected by ARM validation)
+    "name": "[format('{0}-assoc', variables('winDcrName'))]",
     "scope": "[format('Microsoft.Compute/virtualMachines/{0}', variables('winNames')[copyIndex()])]",
     "copy": {"name": "winAssocLoop", "count": "[length(variables('winNames'))]"},
     "dependsOn": ["[resourceId('Microsoft.Insights/dataCollectionRules', variables('winDcrName'))]"],
@@ -154,7 +155,7 @@ R.append({
 # --- DCR associations (Linux) ---
 R.append({
     "type": "Microsoft.Insights/dataCollectionRuleAssociations", "apiVersion": "2022-06-01",
-    "name": "[format('{0}/Microsoft.Insights/{1}-assoc', variables('lnxNames')[copyIndex()], variables('linuxDcrName'))]",
+    "name": "[format('{0}-assoc', variables('linuxDcrName'))]",
     "scope": "[format('Microsoft.Compute/virtualMachines/{0}', variables('lnxNames')[copyIndex()])]",
     "condition": "[not(empty(variables('lnxNames')))]",
     "copy": {"name": "lnxAssocLoop", "count": "[max(1, length(variables('lnxNames')))]"},
