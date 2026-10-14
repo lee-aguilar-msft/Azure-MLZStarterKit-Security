@@ -49,6 +49,13 @@
         "description": "Optional. Override the Blob container name. Defaults to 'coverage-container'."
       }
     },
+    "deploySql": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy the Azure SQL server + AdventureWorksLT sample (Defender for SQL coverage). Some subscriptions/regions reject new SQL servers ('Location ... is not accepting creation of new Windows Azure SQL Database servers') until a support request enables the offer \u2014 set false to skip."
+      }
+    },
     "deployKeyVault": {
       "type": "bool",
       "defaultValue": true,
@@ -112,7 +119,7 @@
     "appServicePlanName": "[concat('asp-', variables('unique'))]",
     "webAppName": "[take(concat('app-', variables('unique')), 60)]",
     "apimName": "[take(concat('apim-', variables('unique')), 50)]",
-    "apimApiName": "echo-api"
+    "apimApiName": "lab-echo-api"
   },
   "resources": [
     {
@@ -155,6 +162,7 @@
       }
     },
     {
+      "condition": "[parameters('deploySql')]",
       "type": "Microsoft.Sql/servers",
       "apiVersion": "2022-05-01-preview",
       "name": "[variables('sqlServerName')]",
@@ -167,6 +175,7 @@
       }
     },
     {
+      "condition": "[parameters('deploySql')]",
       "type": "Microsoft.Sql/servers/databases",
       "apiVersion": "2022-05-01-preview",
       "name": "[format('{0}/{1}', variables('sqlServerName'), variables('sqlDatabaseName'))]",
@@ -291,8 +300,8 @@
         "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
       ],
       "properties": {
-        "displayName": "Echo API",
-        "path": "echo",
+        "displayName": "Lab Echo API",
+        "path": "lab-echo",
         "protocols": [
           "https"
         ],
@@ -311,7 +320,13 @@
       "properties": {
         "displayName": "Retrieve resource",
         "method": "GET",
-        "urlTemplate": "/resource"
+        "urlTemplate": "/resource",
+        "responses": [
+          {
+            "statusCode": 200,
+            "description": "OK"
+          }
+        ]
       }
     },
     {
