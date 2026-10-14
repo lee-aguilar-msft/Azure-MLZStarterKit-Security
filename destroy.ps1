@@ -120,7 +120,7 @@ $defenderPlans = @(
 $policyAssignments = @(
     "assign-nist-800-53",
     "assign-nist-800-171",
-    "assign-fedramp-high",
+    "assign-mcsb",
     "assign-dod-il5"   # legacy name from kits built before the DoD IL5 initiative was retired
 )
 

@@ -225,8 +225,11 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lee-aguilar-msft/Azure
 - **Defender for DNS** is no longer offered as a standalone plan (Microsoft retired it; DNS threat detection
   now ships inside Defender for Servers / CSPM), so the kit does not enable it. **Defender for APIs**
   needs an explicit sub-plan — the kit sets `defenderForApisSubPlan = P1` (up to 1M calls/month).
-- The standalone **DoD IL5** regulatory initiative has been retired by Microsoft. The kit assigns
-  **FedRAMP High** (`deployFedRampHigh`) instead, which is the Azure Government control baseline for
-  IL5 workloads; NIST 800-53 R5 / 800-171 R2 remain available as separate toggles.
+- The standalone **DoD IL5** regulatory initiative has been retired by Microsoft, so the kit assigns the
+  **Microsoft cloud security benchmark** (`deployMcsb`, the Defender CSPM baseline) instead, alongside the
+  optional NIST 800-53 R5 / 800-171 R2 initiatives. All three exist in Azure Government.
+- The portal form is **cloud-aware**: when a `usgov*`/`usdod*` region is selected it hides what Azure
+  Government does not offer (Defender for App Service, Defender for APIs, commercial-only VM sizes) and
+  derives the `.us`/`.com` endpoint set from the region automatically.
 - The Arc Private Link Scope uses a preview API version; keep `deployArcPrivateLink = false` if your
   subscription/region doesn't expose it yet.

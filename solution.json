@@ -124,11 +124,11 @@
       "type": "bool",
       "defaultValue": false
     },
-    "deployFedRampHigh": {
+    "deployMcsb": {
       "type": "bool",
       "defaultValue": false,
       "metadata": {
-        "description": "Assign the FedRAMP High regulatory-compliance initiative (audit-only). This is the Azure Government baseline for DoD IL5 workloads now that the standalone DoD IL5 initiative has been retired."
+        "description": "Assign the Microsoft cloud security benchmark (MCSB) initiative \u2014 the Defender CSPM baseline \u2014 in audit-only mode. Available in Azure Government and Commercial."
       }
     },
     "deploySentinel": {
@@ -1630,17 +1630,17 @@
       }
     },
     {
-      "condition": "[parameters('deployFedRampHigh')]",
+      "condition": "[parameters('deployMcsb')]",
       "type": "Microsoft.Authorization/policyAssignments",
       "apiVersion": "2022-06-01",
-      "name": "assign-fedramp-high",
+      "name": "assign-mcsb",
       "location": "[parameters('location')]",
       "identity": {
         "type": "SystemAssigned"
       },
       "properties": {
-        "displayName": "FedRAMP High",
-        "policyDefinitionId": "/providers/Microsoft.Authorization/policySetDefinitions/d5264498-16f4-418a-b659-fa7ef418175f",
+        "displayName": "Microsoft cloud security benchmark",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policySetDefinitions/1f3afdf9-d0c9-4c3d-847f-89da613e70a8",
         "enforcementMode": "DoNotEnforce"
       }
     },
