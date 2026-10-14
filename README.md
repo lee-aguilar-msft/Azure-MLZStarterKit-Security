@@ -219,6 +219,9 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lee-aguilar-msft/Azure
 - **MDI** (Defender for Identity) sensors are intentionally **out of scope** — installed separately.
 - SLES/RHEL/Ubuntu use PAYG marketplace images; if your subscription requires a plan acceptance for a
   given image, accept it (or adjust the image reference) before deploying.
+- The CSPM **Azure SQL** sample can be switched off (`deployCspmSql`). New or dev subscriptions are sometimes
+  not yet enabled for SQL in a region (`Location 'USGov Virginia' is not accepting creation of new Windows
+  Azure SQL Database servers at this time`) — open a support request for the SQL offer, or skip the sample.
 - The CSPM API Management sample defaults to the **Developer** SKU (works in Azure Government; ~30–45 min
   to provision, ~$50/mo). Set `cspmApimSku` to `BasicV2`/`StandardV2` for minutes-fast provisioning where
   those tiers are available, or `deployCspmApiManagement = false` to skip it.
@@ -228,6 +231,10 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lee-aguilar-msft/Azure
 - The standalone **DoD IL5** regulatory initiative has been retired by Microsoft, so the kit assigns the
   **Microsoft cloud security benchmark** (`deployMcsb`, the Defender CSPM baseline) instead, alongside the
   optional NIST 800-53 R5 / 800-171 R2 initiatives. All three exist in Azure Government.
+- **RHEL PAYG images update from Azure RHUI** (`rhui-*.microsoft.com` / `rhui4-*.microsoft.com`); the lab
+  firewall rules allow it. Without that egress the AADSSHLoginForLinux extension fails on RHEL
+  (`Failed to download metadata for repo 'rhui-microsoft-azure-rhel9'`). A `prep-linux` run-command also
+  waits for cloud-init / the package lock before the Entra SSH and AMA extensions install on every Linux VM.
 - The portal form is **cloud-aware**: when a `usgov*`/`usdod*` region is selected it hides what Azure
   Government does not offer (Defender for App Service, Defender for APIs, commercial-only VM sizes) and
   derives the `.us`/`.com` endpoint set from the region automatically.

@@ -431,6 +431,13 @@
         "description": "CSPM coverage: deploy a Key Vault for Defender for Key Vault."
       }
     },
+    "deployCspmSql": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy the CSPM sample Azure SQL server/database. Turn off if the subscription is not yet enabled for SQL in the region."
+      }
+    },
     "deployCspmAppService": {
       "type": "bool",
       "defaultValue": true,
@@ -623,6 +630,13 @@
     ],
     "linuxRepoFqdns": [
       "packages.microsoft.com",
+      "rhui-1.microsoft.com",
+      "rhui-2.microsoft.com",
+      "rhui-3.microsoft.com",
+      "rhui-4.microsoft.com",
+      "rhui4-1.microsoft.com",
+      "rhui4-2.microsoft.com",
+      "rhui4-3.microsoft.com",
       "security.ubuntu.com",
       "archive.ubuntu.com",
       "*.archive.ubuntu.com",
@@ -1468,6 +1482,9 @@
           },
           "deployKeyVault": {
             "value": "[parameters('deployCspmKeyVault')]"
+          },
+          "deploySql": {
+            "value": "[parameters('deployCspmSql')]"
           },
           "deployAppService": {
             "value": "[parameters('deployCspmAppService')]"

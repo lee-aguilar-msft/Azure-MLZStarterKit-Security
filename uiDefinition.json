@@ -449,6 +449,39 @@
               }
             },
             {
+              "name": "cspmHeader",
+              "type": "Microsoft.Common.TextBlock",
+              "options": {
+                "text": "CSPM / CWPP coverage samples (deployed into the workload resource group so the Defender plans above have something to protect)"
+              }
+            },
+            {
+              "name": "deployCspmSql",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Azure SQL server + AdventureWorksLT sample (Defender for SQL)",
+              "toolTip": "Some subscriptions are not yet enabled for Azure SQL in a region ('Location is not accepting creation of new Windows Azure SQL Database servers'). Uncheck if that applies, or open a support request to enable the offer.",
+              "defaultValue": true
+            },
+            {
+              "name": "deployCspmKeyVault",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Key Vault sample (Defender for Key Vault)",
+              "defaultValue": true
+            },
+            {
+              "name": "deployCspmAppService",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "App Service B1 plan + web app sample",
+              "defaultValue": true
+            },
+            {
+              "name": "deployCspmApiManagement",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "API Management (Developer SKU) + Lab Echo API sample \u2014 ~45 min, ~$50/mo",
+              "toolTip": "Provisioning the Developer SKU takes 30\u201345 minutes. Leave off for a first smoke test; turn on when you want API inventory in Defender CSPM (Defender for APIs itself is not offered in Azure Government).",
+              "defaultValue": false
+            },
+            {
               "name": "cspmNamingNote",
               "type": "Microsoft.Common.InfoBox",
               "options": {
@@ -1086,7 +1119,11 @@
         "autoShutdownTime": "0300",
         "autoShutdownTimeZone": "UTC",
         "dnsForwarders": "168.63.129.16",
-        "ouRoot": "LAB"
+        "ouRoot": "LAB",
+        "deployCspmSql": "[steps('securityCompliance').deployCspmSql]",
+        "deployCspmKeyVault": "[steps('securityCompliance').deployCspmKeyVault]",
+        "deployCspmAppService": "[steps('securityCompliance').deployCspmAppService]",
+        "deployCspmApiManagement": "[steps('securityCompliance').deployCspmApiManagement]"
       }
     }
   }
