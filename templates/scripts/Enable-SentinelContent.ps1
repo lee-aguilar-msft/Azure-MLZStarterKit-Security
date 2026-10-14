@@ -41,7 +41,8 @@ param (
     'Syslog', 'ThreatIntelligence', 'ThreatIntelligenceTaxii'
   ),
   [string[]]$UebaDataSources = @('AuditLogs', 'AzureActivity', 'SigninLogs', 'SecurityEvent'),
-  [switch]$EnableXdrConnector
+  [switch]$EnableXdrConnector,
+  [switch]$SkipUeba
 )
 
 $ErrorActionPreference = 'Stop'
@@ -132,6 +133,8 @@ foreach ($t in $unique) {
 Write-Output "Analytics rules enabled: $enabled (failed/skipped: $failed)"
 
 # ================= 3. Entity Behavior Analytics (UEBA) =================
+if ($SkipUeba) { Write-Output '--- UEBA enablement skipped (-SkipUeba) ---' }
+else {
 Write-Output '--- Enabling Entity Behavior Analytics (UEBA) ---'
 try {
   $eaUri = "$base/settings/EntityAnalytics?api-version=$apiSettings"
@@ -140,6 +143,7 @@ try {
   Invoke-Arm PUT $uebaUri @{ kind = 'Ueba'; properties = @{ dataSources = $UebaDataSources } } | Out-Null
   Write-Output "UEBA enabled over: $($UebaDataSources -join ', ')"
 } catch { Write-Warning "UEBA enablement: $($_.Exception.Message)" }
+}
 
 # ================= 4. Microsoft Defender XDR connector (optional) =================
 if ($EnableXdrConnector) {
