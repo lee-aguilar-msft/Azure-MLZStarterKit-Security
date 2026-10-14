@@ -17,27 +17,88 @@
     "customStorageAccountName": {
       "type": "string",
       "defaultValue": "",
-      "metadata": { "description": "Optional. Override the auto-generated Storage account name (3-24 chars, lowercase alphanumeric)." }
+      "metadata": {
+        "description": "Optional. Override the auto-generated Storage account name (3-24 chars, lowercase alphanumeric)."
+      }
     },
     "customAcrName": {
       "type": "string",
       "defaultValue": "",
-      "metadata": { "description": "Optional. Override the auto-generated Container Registry name (5-50 chars, alphanumeric)." }
+      "metadata": {
+        "description": "Optional. Override the auto-generated Container Registry name (5-50 chars, alphanumeric)."
+      }
     },
     "customSqlServerName": {
       "type": "string",
       "defaultValue": "",
-      "metadata": { "description": "Optional. Override the auto-generated SQL Server name (1-63 chars, lowercase letters, numbers, hyphens)." }
+      "metadata": {
+        "description": "Optional. Override the auto-generated SQL Server name (1-63 chars, lowercase letters, numbers, hyphens)."
+      }
     },
     "customSqlDatabaseName": {
       "type": "string",
       "defaultValue": "",
-      "metadata": { "description": "Optional. Override the SQL Database name. Defaults to 'defenderdb'." }
+      "metadata": {
+        "description": "Optional. Override the SQL Database name. Defaults to 'defenderdb'."
+      }
     },
     "customBlobContainerName": {
       "type": "string",
       "defaultValue": "",
-      "metadata": { "description": "Optional. Override the Blob container name. Defaults to 'coverage-container'." }
+      "metadata": {
+        "description": "Optional. Override the Blob container name. Defaults to 'coverage-container'."
+      }
+    },
+    "deployKeyVault": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy a Key Vault so Defender for Key Vault has a resource to protect."
+      }
+    },
+    "deployAppService": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy an App Service plan (B1) + web app so Defender for App Service has a resource to protect (Free/Shared plans are not supported by the plan)."
+      }
+    },
+    "deployApiManagement": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy an API Management instance with a sample API so Defender for APIs has a resource to protect."
+      }
+    },
+    "apimSku": {
+      "type": "string",
+      "defaultValue": "Developer",
+      "allowedValues": [
+        "Developer",
+        "BasicV2",
+        "StandardV2",
+        "Basic",
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "API Management SKU. Developer is available in all clouds (slow to provision, ~30-45 min). BasicV2/StandardV2 provision in minutes where available. Consumption is not supported by Defender for APIs."
+      }
+    },
+    "apimPublisherEmail": {
+      "type": "string",
+      "defaultValue": "soc@example.com"
+    },
+    "apimPublisherName": {
+      "type": "string",
+      "defaultValue": "MLZ Security Lab"
+    },
+    "onboardApiToDefender": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Onboard the sample API to Defender for APIs (requires the Defender for APIs plan to be enabled on the subscription first)."
+      }
     }
   },
   "variables": {
@@ -46,7 +107,12 @@
     "containerRegistryName": "[if(empty(parameters('customAcrName')), take(concat('acr', variables('unique')), 50), parameters('customAcrName'))]",
     "sqlServerName": "[if(empty(parameters('customSqlServerName')), concat('sql-', variables('unique')), parameters('customSqlServerName'))]",
     "sqlDatabaseName": "[if(empty(parameters('customSqlDatabaseName')), 'defenderdb', parameters('customSqlDatabaseName'))]",
-    "blobContainerName": "[if(empty(parameters('customBlobContainerName')), 'coverage-container', parameters('customBlobContainerName'))]"
+    "blobContainerName": "[if(empty(parameters('customBlobContainerName')), 'coverage-container', parameters('customBlobContainerName'))]",
+    "keyVaultName": "[take(concat('kv-', variables('unique')), 24)]",
+    "appServicePlanName": "[concat('asp-', variables('unique'))]",
+    "webAppName": "[take(concat('app-', variables('unique')), 60)]",
+    "apimName": "[take(concat('apim-', variables('unique')), 50)]",
+    "apimApiName": "echo-api"
   },
   "resources": [
     {
@@ -54,7 +120,9 @@
       "apiVersion": "2023-05-01",
       "name": "[variables('storageAccountName')]",
       "location": "[parameters('location')]",
-      "sku": { "name": "Standard_LRS" },
+      "sku": {
+        "name": "Standard_LRS"
+      },
       "kind": "StorageV2",
       "properties": {
         "supportsHttpsTrafficOnly": true,
@@ -69,14 +137,18 @@
       "dependsOn": [
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
       ],
-      "properties": { "publicAccess": "None" }
+      "properties": {
+        "publicAccess": "None"
+      }
     },
     {
       "type": "Microsoft.ContainerRegistry/registries",
       "apiVersion": "2023-07-01",
       "name": "[variables('containerRegistryName')]",
       "location": "[parameters('location')]",
-      "sku": { "name": "Basic" },
+      "sku": {
+        "name": "Basic"
+      },
       "properties": {
         "adminUserEnabled": false,
         "publicNetworkAccess": "Enabled"
@@ -99,7 +171,10 @@
       "apiVersion": "2022-05-01-preview",
       "name": "[format('{0}/{1}', variables('sqlServerName'), variables('sqlDatabaseName'))]",
       "location": "[parameters('location')]",
-      "sku": { "name": "Basic", "tier": "Basic" },
+      "sku": {
+        "name": "Basic",
+        "tier": "Basic"
+      },
       "dependsOn": [
         "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
       ],
@@ -127,6 +202,128 @@
           }
         }
       }
+    },
+    {
+      "condition": "[parameters('deployKeyVault')]",
+      "type": "Microsoft.KeyVault/vaults",
+      "apiVersion": "2023-07-01",
+      "name": "[variables('keyVaultName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "tenantId": "[subscription().tenantId]",
+        "sku": {
+          "family": "A",
+          "name": "standard"
+        },
+        "enableRbacAuthorization": true,
+        "enableSoftDelete": true,
+        "softDeleteRetentionInDays": 7,
+        "publicNetworkAccess": "Enabled",
+        "networkAcls": {
+          "defaultAction": "Allow",
+          "bypass": "AzureServices"
+        }
+      }
+    },
+    {
+      "condition": "[parameters('deployAppService')]",
+      "type": "Microsoft.Web/serverfarms",
+      "apiVersion": "2023-12-01",
+      "name": "[variables('appServicePlanName')]",
+      "location": "[parameters('location')]",
+      "kind": "linux",
+      "sku": {
+        "name": "B1",
+        "tier": "Basic",
+        "capacity": 1
+      },
+      "properties": {
+        "reserved": true
+      }
+    },
+    {
+      "condition": "[parameters('deployAppService')]",
+      "type": "Microsoft.Web/sites",
+      "apiVersion": "2023-12-01",
+      "name": "[variables('webAppName')]",
+      "location": "[parameters('location')]",
+      "kind": "app,linux",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]"
+      ],
+      "properties": {
+        "serverFarmId": "[resourceId('Microsoft.Web/serverfarms', variables('appServicePlanName'))]",
+        "httpsOnly": true,
+        "siteConfig": {
+          "linuxFxVersion": "NODE|20-lts",
+          "minTlsVersion": "1.2",
+          "ftpsState": "Disabled"
+        }
+      }
+    },
+    {
+      "condition": "[parameters('deployApiManagement')]",
+      "type": "Microsoft.ApiManagement/service",
+      "apiVersion": "2023-05-01-preview",
+      "name": "[variables('apimName')]",
+      "location": "[parameters('location')]",
+      "sku": {
+        "name": "[parameters('apimSku')]",
+        "capacity": 1
+      },
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "publisherEmail": "[parameters('apimPublisherEmail')]",
+        "publisherName": "[parameters('apimPublisherName')]"
+      }
+    },
+    {
+      "condition": "[parameters('deployApiManagement')]",
+      "type": "Microsoft.ApiManagement/service/apis",
+      "apiVersion": "2023-05-01-preview",
+      "name": "[format('{0}/{1}', variables('apimName'), variables('apimApiName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service', variables('apimName'))]"
+      ],
+      "properties": {
+        "displayName": "Echo API",
+        "path": "echo",
+        "protocols": [
+          "https"
+        ],
+        "serviceUrl": "http://echoapi.cloudapp.net/api",
+        "subscriptionRequired": true
+      }
+    },
+    {
+      "condition": "[parameters('deployApiManagement')]",
+      "type": "Microsoft.ApiManagement/service/apis/operations",
+      "apiVersion": "2023-05-01-preview",
+      "name": "[format('{0}/{1}/get-resource', variables('apimName'), variables('apimApiName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis', variables('apimName'), variables('apimApiName'))]"
+      ],
+      "properties": {
+        "displayName": "Retrieve resource",
+        "method": "GET",
+        "urlTemplate": "/resource"
+      }
+    },
+    {
+      "condition": "[and(parameters('deployApiManagement'), parameters('onboardApiToDefender'))]",
+      "type": "Microsoft.Security/apiCollections",
+      "apiVersion": "2023-11-15",
+      "scope": "[format('Microsoft.ApiManagement/service/{0}', variables('apimName'))]",
+      "name": "[variables('apimApiName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ApiManagement/service/apis/operations', variables('apimName'), variables('apimApiName'), 'get-resource')]"
+      ],
+      "properties": {}
     }
   ],
   "outputs": {
@@ -149,6 +346,18 @@
     "sqlDatabaseName": {
       "type": "string",
       "value": "[variables('sqlDatabaseName')]"
+    },
+    "keyVaultName": {
+      "type": "string",
+      "value": "[if(parameters('deployKeyVault'), variables('keyVaultName'), '')]"
+    },
+    "webAppName": {
+      "type": "string",
+      "value": "[if(parameters('deployAppService'), variables('webAppName'), '')]"
+    },
+    "apimName": {
+      "type": "string",
+      "value": "[if(parameters('deployApiManagement'), variables('apimName'), '')]"
     }
   }
 }
