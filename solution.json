@@ -1678,10 +1678,10 @@
             "value": 90
           },
           "vmNames": {
-            "value": "[reference(resourceId(variables('tier3ResourceGroupName'), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01').outputs.windowsVmNames.value]"
+            "value": "[reference(resourceId(subscription().subscriptionId, variables('tier3ResourceGroupName'), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01').outputs.windowsVmNames.value]"
           },
           "linuxVmNames": {
-            "value": "[reference(resourceId(variables('tier3ResourceGroupName'), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01').outputs.linuxVmNames.value]"
+            "value": "[reference(resourceId(subscription().subscriptionId, variables('tier3ResourceGroupName'), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01').outputs.linuxVmNames.value]"
           },
           "usePrivateIngestion": {
             "value": "[parameters('usePrivateIngestion')]"

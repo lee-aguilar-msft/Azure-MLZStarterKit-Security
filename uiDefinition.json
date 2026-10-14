@@ -3,7 +3,7 @@
   "view": {
     "kind": "Form",
     "properties": {
-      "title": "Mission Landing Zone AD + Entra One-Shot",
+      "title": "MLZ Security Lab Starter Kit",
       "steps": [
         {
           "name": "basics",
@@ -13,7 +13,7 @@
               "name": "description",
               "type": "Microsoft.Common.TextBlock",
               "options": {
-                "text": "Deploys MLZ core hub, Tier3 network, AD lab (1 DC, 2 member servers, 3 clients), Entra VM sign-in, and CSPM sample resources."
+                "text": "Deploys the MLZ hub + Tier3 network, an AD forest lab (1 DC, 2 member servers, 3 Windows 11 clients), 3 Linux servers (RHEL/Ubuntu/SLES) with Entra SSH login, Entra VM sign-in, Azure Monitor Agent, Microsoft Sentinel, Azure Arc private link, cloud-aware firewall rules, and CSPM coverage resources."
               }
             },
             {
@@ -866,6 +866,38 @@
                   }
                 ]
               }
+            },
+            {
+              "name": "linuxHeader",
+              "type": "Microsoft.Common.TextBlock",
+              "visible": true,
+              "options": {
+                "text": "Linux servers (RHEL 9, Ubuntu 22.04, SLES 15 SP5) are deployed when \"Deploy 3 Linux servers\" is enabled on the Lab Options tab. Their images are fixed; choose their size here."
+              }
+            },
+            {
+              "name": "linuxVmSize",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Linux VM Size",
+              "defaultValue": "Standard_D2ads_v6 (2 vCPUs, 8 GiB) \u2014 recommended",
+              "toolTip": "Size for each of the three Linux servers.",
+              "constraints": {
+                "allowedValues": [
+                  {
+                    "label": "Standard_D2ads_v6 (2 vCPUs, 8 GiB) \u2014 recommended",
+                    "value": "Standard_D2ads_v6"
+                  },
+                  {
+                    "label": "Standard_D4ads_v6 (4 vCPUs, 16 GiB)",
+                    "value": "Standard_D4ads_v6"
+                  },
+                  {
+                    "label": "Standard_D2s_v5 (2 vCPUs, 8 GiB) \u2014 Azure Commercial only",
+                    "value": "Standard_D2s_v5"
+                  }
+                ],
+                "required": true
+              }
             }
           ]
         },
@@ -949,7 +981,7 @@
         "clientImageOffer": "[steps('remoteAccess').clientImageOffer]",
         "clientImageSku": "[steps('remoteAccess').clientImageSku]",
         "clientImageVersion": "[steps('remoteAccess').clientImageVersion]",
-        "linuxVmSize": "Standard_D2ads_v6",
+        "linuxVmSize": "[steps('remoteAccess').linuxVmSize]",
         "cloudSuffix": "[steps('labOptions').cloudSuffix]",
         "upnSuffix": "[steps('labOptions').upnSuffix]",
         "labUserName": "[steps('labOptions').labUserName]",
