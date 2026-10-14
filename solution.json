@@ -453,7 +453,6 @@
     "tier3DeploymentName": "[format('deploy-tier3-{0}', parameters('deploymentNameSuffix'))]",
     "labVmDeploymentName": "[format('deploy-ad-entra-vms-{0}', parameters('deploymentNameSuffix'))]",
     "cspmCoverageDeploymentName": "[format('deploy-cspm-coverage-{0}', parameters('deploymentNameSuffix'))]",
-    "sentinelDeploymentName": "[format('deploy-sentinel-{0}', parameters('deploymentNameSuffix'))]",
     "entraGroupUniqueName": "[if(empty(parameters('entraGroupName')), format('mlz-{0}-vm-users', parameters('prefix')), parameters('entraGroupName'))]",
     "locationAbbreviations": {
       "australiacentral": "auc",
@@ -516,9 +515,6 @@
       "usgovvirginia": "va"
     },
     "tier3ResourceGroupName": "[format('{0}-{1}-{2}-{3}-rg-network', toLower(parameters('identifier')), parameters('environmentAbbreviation'), variables('locationAbbreviations')[parameters('location')], parameters('workloadName'))]",
-    "fwSource": [
-      "[parameters('virtualNetworkAddressPrefix')]"
-    ],
     "mdeFqdnsGov": [
       "*.endpoint.security.microsoft.us",
       "*.securitycenter.microsoft.us",
@@ -1682,10 +1678,10 @@
             "value": 90
           },
           "vmNames": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('tier3ResourceGroupName')), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01').outputs.windowsVmNames.value]"
+            "value": "[reference(resourceId(variables('tier3ResourceGroupName'), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01').outputs.windowsVmNames.value]"
           },
           "linuxVmNames": {
-            "value": "[reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('tier3ResourceGroupName')), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01').outputs.linuxVmNames.value]"
+            "value": "[reference(resourceId(variables('tier3ResourceGroupName'), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01').outputs.linuxVmNames.value]"
           },
           "usePrivateIngestion": {
             "value": "[parameters('usePrivateIngestion')]"
