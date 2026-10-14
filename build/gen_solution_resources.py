@@ -46,7 +46,7 @@ lp["deployMde"] = val("[parameters('deployDefenderForServers')]")
 
 # ---- replace the Sentinel inline deployment with the security-lab module ----
 tier3rg = "[format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('tier3ResourceGroupName'))]"
-labvm_ref = "reference(extensionResourceId(format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('tier3ResourceGroupName')), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01')"
+labvm_ref = "reference(resourceId(variables('tier3ResourceGroupName'), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01')"
 security_lab = collections.OrderedDict([
     ("condition", "[parameters('deploySentinel')]"),
     ("type", "Microsoft.Resources/deployments"),

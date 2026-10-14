@@ -92,9 +92,10 @@ R.append({
 R.append({
     "type": "Microsoft.Insights/dataCollectionRules", "apiVersion": "2022-06-01",
     "name": "[variables('winDcrName')]", "location": "[parameters('location')]",
+    # The DCE is conditional; ARM ignores dependsOn entries for resources that are not deployed.
     "dependsOn": [
         "[variables('workspaceResourceId')]",
-        "[if(parameters('usePrivateIngestion'), resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName')), variables('workspaceResourceId'))]",
+        "[resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName'))]",
     ],
     "kind": "Windows",
     "properties": {
@@ -116,9 +117,10 @@ R.append({
     "type": "Microsoft.Insights/dataCollectionRules", "apiVersion": "2022-06-01",
     "name": "[variables('linuxDcrName')]", "location": "[parameters('location')]",
     "condition": "[not(empty(parameters('linuxVmNames')))]",
+    # The DCE is conditional; ARM ignores dependsOn entries for resources that are not deployed.
     "dependsOn": [
         "[variables('workspaceResourceId')]",
-        "[if(parameters('usePrivateIngestion'), resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName')), variables('workspaceResourceId'))]",
+        "[resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName'))]",
     ],
     "kind": "Linux",
     "properties": {
@@ -194,7 +196,7 @@ R.append({
         "retentionInterval": "P1D",
         "cleanupPreference": "OnSuccess",
         "timeout": "PT1H",
-        "arguments": "[format('-SubscriptionId {0} -ResourceGroupName {1} -WorkspaceName {2} {3}', parameters('subscriptionId'), parameters('resourceGroupName'), parameters('workspaceName'), if(parameters('enableXdrConnector'), '-EnableXdrConnector', ''))]",
+        "arguments": "[format('-SubscriptionId {0} -ResourceGroupName {1} -WorkspaceName {2} {3} {4}', parameters('subscriptionId'), parameters('resourceGroupName'), parameters('workspaceName'), if(parameters('enableXdrConnector'), '-EnableXdrConnector', ''), if(parameters('deployUeba'), '', '-SkipUeba'))]",
         "scriptContent": "[variables('enableContentScript')]",
     },
 })

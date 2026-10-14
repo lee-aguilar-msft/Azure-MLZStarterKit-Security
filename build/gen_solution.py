@@ -22,7 +22,6 @@ def app_both(port_https=True, port_http=False):
     return pr
 
 # ---- cloud-variant FQDN lists (held as variables so the rules stay readable) ----
-V["fwSource"] = [FW_SRC]
 V["mdeFqdnsGov"] = ["*.endpoint.security.microsoft.us", "*.securitycenter.microsoft.us", "*.gcc.securitycenter.microsoft.us",
     "unitedstates1.ss.wd.microsoft.us", "unitedstates2.ss.wd.microsoft.us", "unitedstates4.ss.wd.microsoft.us",
     "*.blob.core.usgovcloudapi.net", "config.ecs.gov.teams.microsoft.us", "config.ecs.dod.teams.microsoft.us",
