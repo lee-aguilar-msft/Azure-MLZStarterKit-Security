@@ -1,0 +1,976 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "AD forest + Entra lab: DCs, member servers, Windows clients, Linux servers, Entra login, AMA, MDE, auto-shutdown."
+  },
+  "parameters": {
+    "location": {
+      "type": "string"
+    },
+    "prefix": {
+      "type": "string",
+      "metadata": {
+        "description": "Resource name prefix, e.g. 'sdl' or 'rrs'."
+      }
+    },
+    "subnetResourceId": {
+      "type": "string"
+    },
+    "domainControllerPrivateIp": {
+      "type": "string",
+      "defaultValue": "10.60.0.10"
+    },
+    "dnsForwarders": {
+      "type": "string",
+      "defaultValue": "168.63.129.16",
+      "metadata": {
+        "description": "Upstream DNS the DC forwards to (hub firewall DNS proxy private IP, or 168.63.129.16)."
+      }
+    },
+    "additionalDnsServers": {
+      "type": "array",
+      "defaultValue": []
+    },
+    "adminUsername": {
+      "type": "string"
+    },
+    "adminPassword": {
+      "type": "secureString"
+    },
+    "domainName": {
+      "type": "string"
+    },
+    "domainNetbiosName": {
+      "type": "string"
+    },
+    "safeModeAdminPassword": {
+      "type": "secureString"
+    },
+    "ouRoot": {
+      "type": "string",
+      "defaultValue": "LAB",
+      "metadata": {
+        "description": "Top-level OU name for all lab objects."
+      }
+    },
+    "upnSuffix": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Verified Entra domain to add as a UPN suffix so synced users keep a routable UPN. Empty = use domainName."
+      }
+    },
+    "labUserName": {
+      "type": "string",
+      "defaultValue": "lab.user"
+    },
+    "labUserPassword": {
+      "type": "secureString",
+      "defaultValue": ""
+    },
+    "cloudSuffix": {
+      "type": "string",
+      "defaultValue": "us",
+      "allowedValues": [
+        "us",
+        "com"
+      ],
+      "metadata": {
+        "description": "'us' = Azure Government / GCC High endpoints; 'com' = commercial."
+      }
+    },
+    "intuneCredentialType": {
+      "type": "string",
+      "defaultValue": "1",
+      "allowedValues": [
+        "1",
+        "2"
+      ],
+      "metadata": {
+        "description": "1 = user credential auto-enroll, 2 = device credential."
+      }
+    },
+    "mdeOnboardingBlob": {
+      "type": "secureString",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Raw MDE onboarding JSON (from the GCC High / commercial onboarding package). Applied to clients via run-command and to all machines via a startup-script GPO. Empty = rely on the MDE.Windows/MDE.Linux extension instead."
+      }
+    },
+    "entraLoginPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Object ID of the Entra user/group granted VM login."
+      }
+    },
+    "entraPrincipalType": {
+      "type": "string",
+      "defaultValue": "Group",
+      "allowedValues": [
+        "Group",
+        "User",
+        "ServicePrincipal"
+      ]
+    },
+    "assignVmAdminRole": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "assignVmUserRole": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployMde": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Install the MDE.Windows/MDE.Linux Defender for Servers extension on the servers."
+      }
+    },
+    "deployLinuxVms": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "deployHydration": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Register the benign activity generator that feeds the hunting workspace."
+      }
+    },
+    "hydrationIntervalMinutes": {
+      "type": "string",
+      "defaultValue": "60"
+    },
+    "autoShutdownTime": {
+      "type": "string",
+      "defaultValue": "0300",
+      "metadata": {
+        "description": "Daily auto-shutdown time (HHmm, VM local). 0300 UTC = 23:00 ET. Empty disables."
+      }
+    },
+    "autoShutdownTimeZone": {
+      "type": "string",
+      "defaultValue": "UTC"
+    },
+    "serverVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D4ads_v6"
+    },
+    "clientVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D4ads_v6"
+    },
+    "linuxVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D2ads_v6"
+    },
+    "serverImagePublisher": {
+      "type": "string",
+      "defaultValue": "MicrosoftWindowsServer"
+    },
+    "serverImageOffer": {
+      "type": "string",
+      "defaultValue": "WindowsServer"
+    },
+    "serverImageSku": {
+      "type": "string",
+      "defaultValue": "2022-datacenter-g2"
+    },
+    "serverImageVersion": {
+      "type": "string",
+      "defaultValue": "latest"
+    },
+    "clientImagePublisher": {
+      "type": "string",
+      "defaultValue": "MicrosoftWindowsDesktop"
+    },
+    "clientImageOffer": {
+      "type": "string",
+      "defaultValue": "windows-11"
+    },
+    "clientImageSku": {
+      "type": "string",
+      "defaultValue": "win11-23h2-pro"
+    },
+    "clientImageVersion": {
+      "type": "string",
+      "defaultValue": "latest"
+    }
+  },
+  "variables": {
+    "promoteScript": "param (\n  [Parameter(Mandatory = $true)]\n  [string]$DomainName,\n\n  [Parameter(Mandatory = $true)]\n  [string]$DomainNetbiosName,\n\n  [Parameter(Mandatory = $true)]\n  [string]$SafeModeAdminPassword,\n\n  # Comma-separated list of upstream DNS forwarders (hub firewall DNS proxy / Azure DNS).\n  [string]$DnsForwarders = \"168.63.129.16\"\n)\n\n$ErrorActionPreference = 'Stop'\n$log = 'C:\\LabTools\\promote.log'\nNew-Item -ItemType Directory -Path 'C:\\LabTools' -Force | Out-Null\nStart-Transcript -Path $log -Append | Out-Null\n\ntry {\n  # Lab lesson (SDL Gov build): keep NTDS/SYSVOL on the OS disk. A data disk on v6 NVMe sizes was\n  # wiped twice by a host move / resource-disk initialisation bug and took the forest with it.\n  if (-not (Get-WindowsFeature -Name 'AD-Domain-Services').Installed) {\n    Install-WindowsFeature -Name 'AD-Domain-Services', 'DNS', 'GPMC', 'RSAT-AD-Tools', 'RSAT-DNS-Server' -IncludeManagementTools | Out-Null\n  }\n\n  Import-Module ADDSDeployment\n\n  $alreadyDc = $false\n  try {\n    $cs = Get-CimInstance Win32_ComputerSystem\n    if ($cs.DomainRole -ge 4 -and $cs.Domain -ieq $DomainName) { $alreadyDc = $true }\n  } catch {}\n\n  if ($alreadyDc) {\n    Write-Output \"This server is already a domain controller for '$DomainName'. Skipping promotion.\"\n  }\n  else {\n    $safeMode = ConvertTo-SecureString -String $SafeModeAdminPassword -AsPlainText -Force\n\n    Install-ADDSForest `\n      -DomainName $DomainName `\n      -DomainNetbiosName $DomainNetbiosName `\n      -DatabasePath 'C:\\Windows\\NTDS' `\n      -LogPath 'C:\\Windows\\NTDS' `\n      -SysvolPath 'C:\\Windows\\SYSVOL' `\n      -InstallDNS `\n      -Force `\n      -NoRebootOnCompletion:$true `\n      -SafeModeAdministratorPassword $safeMode | Out-Null\n    Write-Output 'PROMOTE-STATUS: Success (reboot pending)'\n  }\n\n  # Point the DNS server at the hub (Azure Firewall DNS proxy resolves the MLZ private DNS zones\n  # for Azure Monitor / Key Vault / Arc private endpoints). Set the forwarders before the reboot so\n  # they are present the first time the DNS service starts as a DC.\n  $fwd = $DnsForwarders.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ }\n  if ($fwd.Count -gt 0) {\n    # The DNS role is installed by the promotion; set forwarders in the registry-backed config.\n    try {\n      Import-Module DnsServer -ErrorAction Stop\n      Set-DnsServerForwarder -IPAddress $fwd -UseRootHint $false -ErrorAction Stop\n      Write-Output \"DNS forwarders set: $($fwd -join ', ')\"\n    } catch {\n      # DnsServer cmdlets may not work until the service starts post-reboot; persist a marker so the\n      # baseline script re-applies them.\n      Set-Content -Path 'C:\\LabTools\\dns-forwarders.txt' -Value ($fwd -join ',')\n      Write-Output \"Forwarders deferred to baseline: $($_.Exception.Message)\"\n    }\n  }\n}\nfinally {\n  Stop-Transcript | Out-Null\n}\n\nif (-not $alreadyDc) {\n  shutdown.exe /r /t 10 /f /c \"Completing domain controller promotion for $DomainName\"\n}\n",
+    "baselineScript": "param (\n  [Parameter(Mandatory = $true)] [string]$DomainName,\n  [Parameter(Mandatory = $true)] [string]$DomainNetbiosName,\n  [Parameter(Mandatory = $true)] [string]$OuRoot,            # e.g. LAB\n  [string]$UpnSuffix = '',                                   # e.g. sleepingdragonslab.us (verified Entra domain)\n  [string]$LabUserName = 'lab.user',\n  [string]$LabUserPassword = '',\n  [string]$LabUserDisplayName = 'Lab User',\n  [string]$DnsForwarders = '',\n  [string]$IntuneCredentialType = '1',                       # 1 = user credential, 2 = device credential\n  [string]$EnrollmentUrlSuffix = '',                         # 'us' for GCC High / DoD, '' for commercial\n  [string]$CreateIntuneGpo = 'true',\n  [string]$MdeOnboardingBlob = '',                           # raw onboarding JSON (from WindowsDefenderATPOnboardingScript.cmd); optional\n  [string]$HydrationScriptBase64 = '',\n  [string]$HydrationIntervalMinutes = '60'\n)\n\n$ErrorActionPreference = 'Stop'\nNew-Item -ItemType Directory -Path 'C:\\LabTools' -Force | Out-Null\nStart-Transcript -Path 'C:\\LabTools\\forest-baseline.log' -Append | Out-Null\n\nfunction Wait-ForDirectory {\n  param([int]$TimeoutMinutes = 40)\n  $deadline = (Get-Date).AddMinutes($TimeoutMinutes)\n  do {\n    try {\n      Import-Module ActiveDirectory -ErrorAction Stop\n      $d = Get-ADDomain -ErrorAction Stop\n      if ($d.DNSRoot -ieq $DomainName) {\n        # SYSVOL must be shared before GPOs can be written\n        if (Test-Path \"\\\\$env:COMPUTERNAME\\SYSVOL\\$DomainName\\Policies\") { return $d }\n      }\n    } catch { }\n    Start-Sleep -Seconds 20\n  } while ((Get-Date) -lt $deadline)\n  throw \"Active Directory did not become available within $TimeoutMinutes minutes.\"\n}\n\n$domain = Wait-ForDirectory\n$dn = $domain.DistinguishedName\nWrite-Output \"Domain ready: $($domain.DNSRoot) ($dn)\"\n\n# --- DNS forwarders (re-apply; the promotion script may have deferred them) --------------------\n$fwdList = @()\nif ($DnsForwarders) { $fwdList = $DnsForwarders.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } }\nelseif (Test-Path 'C:\\LabTools\\dns-forwarders.txt') { $fwdList = (Get-Content 'C:\\LabTools\\dns-forwarders.txt').Split(',') }\nif ($fwdList.Count -gt 0) {\n  try {\n    Import-Module DnsServer\n    Set-DnsServerForwarder -IPAddress $fwdList -UseRootHint $false\n    Write-Output \"DNS forwarders: $($fwdList -join ', ')\"\n  } catch { Write-Warning \"Could not set forwarders: $($_.Exception.Message)\" }\n}\n\n# --- OU structure ---------------------------------------------------------------------------------\nfunction Ensure-OU {\n  param([string]$Name, [string]$Path)\n  $ouDn = \"OU=$Name,$Path\"\n  if (-not (Get-ADOrganizationalUnit -LDAPFilter \"(distinguishedName=$ouDn)\" -SearchBase $Path -SearchScope OneLevel -ErrorAction SilentlyContinue)) {\n    New-ADOrganizationalUnit -Name $Name -Path $Path -ProtectedFromAccidentalDeletion $false | Out-Null\n    Write-Output \"Created OU $ouDn\"\n  }\n  return $ouDn\n}\n\n$rootOu = Ensure-OU -Name $OuRoot -Path $dn\n$ouWorkstations   = Ensure-OU -Name 'Workstations'    -Path $rootOu\n$ouMemberServers  = Ensure-OU -Name 'MemberServers'   -Path $rootOu\n$ouLinuxServers   = Ensure-OU -Name 'LinuxServers'    -Path $rootOu\n$ouUsers          = Ensure-OU -Name 'Users'           -Path $rootOu\n$ouGroups         = Ensure-OU -Name 'Groups'          -Path $rootOu\n$ouServiceAccts   = Ensure-OU -Name 'ServiceAccounts' -Path $rootOu\n$ouAdmins         = Ensure-OU -Name 'Admins'          -Path $rootOu\n\n# Redirect default containers so joined machines/users land in managed OUs\ntry { & redircmp.exe $ouWorkstations | Out-Null } catch { Write-Warning \"redircmp: $($_.Exception.Message)\" }\ntry { & redirusr.exe $ouUsers        | Out-Null } catch { Write-Warning \"redirusr: $($_.Exception.Message)\" }\n\n# --- UPN suffix (lets synced users keep a routable UPN that matches a verified Entra domain) ---\nif ($UpnSuffix -and $UpnSuffix -ine $DomainName) {\n  $forest = Get-ADForest\n  if ($forest.UPNSuffixes -notcontains $UpnSuffix) {\n    Set-ADForest -Identity $forest.Name -UPNSuffixes @{Add = $UpnSuffix }\n    Write-Output \"Added UPN suffix $UpnSuffix\"\n  }\n}\n\n# --- AD Recycle Bin -------------------------------------------------------------------------------\ntry {\n  $rb = Get-ADOptionalFeature -Filter 'name -like \"Recycle Bin Feature\"'\n  if (-not $rb.EnabledScopes) {\n    Enable-ADOptionalFeature -Identity 'Recycle Bin Feature' -Scope ForestOrConfigurationSet -Target (Get-ADForest).Name -Confirm:$false\n    Write-Output 'AD Recycle Bin enabled'\n  }\n} catch { Write-Warning \"Recycle bin: $($_.Exception.Message)\" }\n\n# --- Groups ----------------------------------------------------------------------------------------\n$groups = @(\n  @{ Name = 'LAB-Workstation-Admins'; Desc = 'Local administrators on lab workstations' },\n  @{ Name = 'LAB-Server-Admins';      Desc = 'Local administrators on lab member servers' },\n  @{ Name = 'LAB-RDP-Users';          Desc = 'Remote Desktop Users on lab machines' },\n  @{ Name = 'LAB-Intune-Enroll';      Desc = 'Users whose devices auto-enroll in Intune (scope for the MDM user scope)' },\n  @{ Name = 'LAB-Hybrid-Join-Devices';Desc = 'Computer accounts targeted by hybrid Entra join GPO' },\n  @{ Name = 'LAB-SOC-Analysts';       Desc = 'Hunting / Sentinel analysts' }\n)\nforeach ($g in $groups) {\n  if (-not (Get-ADGroup -Filter \"name -eq '$($g.Name)'\" -ErrorAction SilentlyContinue)) {\n    New-ADGroup -Name $g.Name -GroupScope Global -GroupCategory Security -Path $ouGroups -Description $g.Desc | Out-Null\n    Write-Output \"Created group $($g.Name)\"\n  }\n}\n\n# --- Lab user (CREATED ENABLED \u2014 lesson from the SDL lockout incident) ----------------------------\nif ($LabUserName) {\n  $pwd = if ($LabUserPassword) { $LabUserPassword } else { 'L@b' + [guid]::NewGuid().ToString('N').Substring(0, 14) + '!' }\n  $upn = if ($UpnSuffix) { \"$LabUserName@$UpnSuffix\" } else { \"$LabUserName@$DomainName\" }\n  $existing = Get-ADUser -Filter \"sAMAccountName -eq '$LabUserName'\" -ErrorAction SilentlyContinue\n  if (-not $existing) {\n    New-ADUser -Name $LabUserDisplayName -SamAccountName $LabUserName -UserPrincipalName $upn -DisplayName $LabUserDisplayName `\n      -GivenName ($LabUserDisplayName.Split(' ')[0]) -Surname ($LabUserDisplayName.Split(' ')[-1]) -Path $ouUsers `\n      -AccountPassword (ConvertTo-SecureString $pwd -AsPlainText -Force) -Enabled $true -PasswordNeverExpires $true -ChangePasswordAtLogon $false | Out-Null\n    Write-Output \"Created lab user $upn (enabled)\"\n    foreach ($gn in 'LAB-Workstation-Admins', 'LAB-RDP-Users', 'LAB-Intune-Enroll', 'LAB-SOC-Analysts') {\n      Add-ADGroupMember -Identity $gn -Members $LabUserName -ErrorAction SilentlyContinue\n    }\n  }\n  else {\n    if (-not $existing.Enabled) { Enable-ADAccount -Identity $LabUserName }\n  }\n}\n\n# --- Group Policy ----------------------------------------------------------------------------------\nImport-Module GroupPolicy\n\nfunction Ensure-Gpo {\n  param([string]$Name, [string]$LinkTarget)\n  $gpo = Get-GPO -Name $Name -ErrorAction SilentlyContinue\n  if (-not $gpo) { $gpo = New-GPO -Name $Name; Write-Output \"Created GPO $Name\" }\n  $links = (Get-GPInheritance -Target $LinkTarget).GpoLinks | Where-Object { $_.DisplayName -eq $Name }\n  if (-not $links) { New-GPLink -Name $Name -Target $LinkTarget -LinkEnabled Yes | Out-Null }\n  return $gpo\n}\n\n# Restricted groups equivalent: add lab groups to local Administrators / Remote Desktop Users via GPP is\n# complex to script; we use the simpler \"Add-LocalGroupMember\" in the client configuration run command.\n\n# Intune automatic MDM enrollment (hybrid-joined devices). On GCC High the device registration and\n# enrollment endpoints are the .us endpoints; the registry values below are the documented ADMX policy\n# \"Enable automatic MDM enrollment using default Microsoft Entra credentials\".\nif ($CreateIntuneGpo -ieq 'true') {\n  $gpo = Ensure-Gpo -Name \"$OuRoot - Intune Auto-Enrollment\" -LinkTarget $ouWorkstations\n  $mdmKey = 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\CurrentVersion\\MDM'\n  Set-GPRegistryValue -Name $gpo.DisplayName -Key $mdmKey -ValueName 'AutoEnrollMDM' -Type DWord -Value 1 | Out-Null\n  Set-GPRegistryValue -Name $gpo.DisplayName -Key $mdmKey -ValueName 'UseAADCredentialType' -Type DWord -Value ([int]$IntuneCredentialType) | Out-Null\n  # GCC High / DoD note: the MDM enrollment URLs come from the Entra \"Microsoft Intune\" mobility\n  # configuration (enrollment.manage.microsoft.us). Entra Connect writes the Gov SCP; nothing else\n  # is needed here. $EnrollmentUrlSuffix is recorded for the verification script.\n  Set-Content -Path 'C:\\LabTools\\cloud-suffix.txt' -Value $EnrollmentUrlSuffix\n  Write-Output \"Intune auto-enrollment GPO linked to $ouWorkstations (credential type $IntuneCredentialType)\"\n}\n\n# Audit policy + PowerShell logging GPO \u2014 makes the lab noisy in the right way for hunting\n$auditGpo = Ensure-Gpo -Name \"$OuRoot - Security Auditing and Logging\" -LinkTarget $dn\n$psKey = 'HKLM\\SOFTWARE\\Policies\\Microsoft\\Windows\\PowerShell'\nSet-GPRegistryValue -Name $auditGpo.DisplayName -Key \"$psKey\\ScriptBlockLogging\" -ValueName 'EnableScriptBlockLogging' -Type DWord -Value 1 | Out-Null\nSet-GPRegistryValue -Name $auditGpo.DisplayName -Key \"$psKey\\ModuleLogging\" -ValueName 'EnableModuleLogging' -Type DWord -Value 1 | Out-Null\nSet-GPRegistryValue -Name $auditGpo.DisplayName -Key \"$psKey\\ModuleLogging\\ModuleNames\" -ValueName '*' -Type String -Value '*' | Out-Null\nSet-GPRegistryValue -Name $auditGpo.DisplayName -Key \"$psKey\\Transcription\" -ValueName 'EnableTranscripting' -Type DWord -Value 1 | Out-Null\nSet-GPRegistryValue -Name $auditGpo.DisplayName -Key \"$psKey\\Transcription\" -ValueName 'OutputDirectory' -Type String -Value 'C:\\LabTools\\PSTranscripts' | Out-Null\n# Process creation auditing with command line\nSet-GPRegistryValue -Name $auditGpo.DisplayName -Key 'HKLM\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Policies\\System\\Audit' -ValueName 'ProcessCreationIncludeCmdLine_Enabled' -Type DWord -Value 1 | Out-Null\n# Advanced audit policy via audit.csv in the GPO SYSVOL folder (applies the \"force subcategory\" model)\nSet-GPRegistryValue -Name $auditGpo.DisplayName -Key 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa' -ValueName 'SCENoApplyLegacyAuditPolicy' -Type DWord -Value 1 | Out-Null\n$gpoPath = \"\\\\$DomainName\\SYSVOL\\$DomainName\\Policies\\{$($auditGpo.Id)}\\Machine\\Microsoft\\Windows NT\\Audit\"\nNew-Item -ItemType Directory -Path $gpoPath -Force | Out-Null\n$auditCsv = @'\nMachine Name,Policy Target,Subcategory,Subcategory GUID,Inclusion Setting,Exclusion Setting,Setting Value\n,System,Audit Credential Validation,{0CCE923F-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Kerberos Authentication Service,{0CCE9242-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Kerberos Service Ticket Operations,{0CCE9240-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Computer Account Management,{0CCE9236-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Security Group Management,{0CCE9237-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit User Account Management,{0CCE9235-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Other Account Management Events,{0CCE923A-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Process Creation,{0CCE922B-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Process Termination,{0CCE922C-69AE-11D9-BED3-505054503030},Success,,1\n,System,Audit Directory Service Access,{0CCE923B-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Directory Service Changes,{0CCE923C-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Account Lockout,{0CCE9217-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Logoff,{0CCE9216-69AE-11D9-BED3-505054503030},Success,,1\n,System,Audit Logon,{0CCE9215-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Other Logon/Logoff Events,{0CCE921C-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Special Logon,{0CCE921B-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Detailed File Share,{0CCE9244-69AE-11D9-BED3-505054503030},Failure,,2\n,System,Audit File Share,{0CCE9224-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Other Object Access Events,{0CCE9227-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Removable Storage,{0CCE9245-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Audit Policy Change,{0CCE922F-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Authentication Policy Change,{0CCE9230-69AE-11D9-BED3-505054503030},Success,,1\n,System,Audit MPSSVC Rule-Level Policy Change,{0CCE9232-69AE-11D9-BED3-505054503030},Success,,1\n,System,Audit Sensitive Privilege Use,{0CCE9228-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Security State Change,{0CCE9210-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit Security System Extension,{0CCE9211-69AE-11D9-BED3-505054503030},Success and Failure,,3\n,System,Audit System Integrity,{0CCE9212-69AE-11D9-BED3-505054503030},Success and Failure,,3\n'@\nSet-Content -Path (Join-Path $gpoPath 'audit.csv') -Value $auditCsv -Encoding ASCII\n# Register the audit CSE on the GPO (Audit Policy Configuration extension) and bump the version\n$gpoObj = Get-ADObject -Identity \"CN={$($auditGpo.Id)},CN=Policies,CN=System,$dn\" -Properties gPCMachineExtensionNames, versionNumber\n$auditCse = '[{F3CCC681-B74C-4060-9F26-CD84525DCA2A}{0F3F3735-573D-9804-99E4-AB2A69BA5FD4}]'\n$ext = [string]$gpoObj.gPCMachineExtensionNames\nif ($ext -notlike \"*F3CCC681-B74C-4060-9F26-CD84525DCA2A*\") {\n  $newExt = ($ext + $auditCse)\n  Set-ADObject -Identity $gpoObj.DistinguishedName -Replace @{ gPCMachineExtensionNames = $newExt }\n}\n$ver = [int]$gpoObj.versionNumber + 1\nSet-ADObject -Identity $gpoObj.DistinguishedName -Replace @{ versionNumber = $ver }\n$gptIni = \"\\\\$DomainName\\SYSVOL\\$DomainName\\Policies\\{$($auditGpo.Id)}\\GPT.INI\"\nSet-Content -Path $gptIni -Value \"[General]`r`nVersion=$ver\" -Encoding ASCII\nWrite-Output 'Audit/logging GPO configured'\n\n# --- MDE onboarding as a startup script GPO (optional; clients also get a direct run-command) ------\nif ($MdeOnboardingBlob) {\n  $mdeGpo = Ensure-Gpo -Name \"$OuRoot - MDE Onboarding\" -LinkTarget $dn\n  $scriptsPath = \"\\\\$DomainName\\SYSVOL\\$DomainName\\Policies\\{$($mdeGpo.Id)}\\Machine\\Scripts\\Startup\"\n  New-Item -ItemType Directory -Path $scriptsPath -Force | Out-Null\n  $onboardPs1 = @\"\n`$k = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Advanced Threat Protection'\n`$status = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows Advanced Threat Protection\\Status' -ErrorAction SilentlyContinue\nif (`$status -and `$status.OnboardingState -eq 1) { exit 0 }\nNew-Item -Path `$k -Force | Out-Null\n`$blob = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String((Get-Content -Raw \"`$PSScriptRoot\\onboarding.b64\")))\nNew-ItemProperty -Path `$k -Name OnboardingInfo -Value `$blob -PropertyType String -Force | Out-Null\nSet-Service -Name Sense -StartupType Automatic\nStart-Service -Name Sense -ErrorAction SilentlyContinue\n\"@\n  Set-Content -Path (Join-Path $scriptsPath 'Onboard-MDE.ps1') -Value $onboardPs1 -Encoding ASCII\n  Set-Content -Path (Join-Path $scriptsPath 'onboarding.b64') -Value ([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($MdeOnboardingBlob))) -Encoding ASCII\n  $psScriptsIni = \"`r`n[Startup]`r`n0CmdLine=Onboard-MDE.ps1`r`n0Parameters=`r`n\"\n  Set-Content -Path \"\\\\$DomainName\\SYSVOL\\$DomainName\\Policies\\{$($mdeGpo.Id)}\\Machine\\Scripts\\psscripts.ini\" -Value $psScriptsIni -Encoding Unicode\n  $mdeObj = Get-ADObject -Identity \"CN={$($mdeGpo.Id)},CN=Policies,CN=System,$dn\" -Properties gPCMachineExtensionNames, versionNumber\n  $scriptsCse = '[{42B5FAAE-6536-11D2-AE5A-0000F87571E3}{40B6664F-4972-11D1-A7CA-0000F87571E3}]'\n  if ([string]$mdeObj.gPCMachineExtensionNames -notlike '*42B5FAAE-6536-11D2-AE5A-0000F87571E3*') {\n    Set-ADObject -Identity $mdeObj.DistinguishedName -Replace @{ gPCMachineExtensionNames = ([string]$mdeObj.gPCMachineExtensionNames + $scriptsCse) }\n  }\n  $v = [int]$mdeObj.versionNumber + 1\n  Set-ADObject -Identity $mdeObj.DistinguishedName -Replace @{ versionNumber = $v }\n  Set-Content -Path \"\\\\$DomainName\\SYSVOL\\$DomainName\\Policies\\{$($mdeGpo.Id)}\\GPT.INI\" -Value \"[General]`r`nVersion=$v\" -Encoding ASCII\n  Write-Output 'MDE onboarding startup-script GPO configured'\n}\n\n# --- Hydration task on the DC itself (AD-centric noise: group changes, kerberos, LDAP queries) -----\nif ($HydrationScriptBase64) {\n  $hyd = 'C:\\LabTools\\Invoke-LabHydration.ps1'\n  [IO.File]::WriteAllBytes($hyd, [Convert]::FromBase64String($HydrationScriptBase64))\n  $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument \"-NoProfile -ExecutionPolicy Bypass -File `\"$hyd`\" -Role DomainController\"\n  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(5) -RepetitionInterval (New-TimeSpan -Minutes ([int]$HydrationIntervalMinutes))\n  Register-ScheduledTask -TaskName 'LAB-Hydration' -Action $action -Trigger $trigger -User 'SYSTEM' -RunLevel Highest -Force | Out-Null\n  Write-Output 'Hydration task registered on DC'\n}\n\nWrite-Output 'BASELINE-STATUS: Success'\nStop-Transcript | Out-Null\n",
+    "joinScript": "param (\n  [Parameter(Mandatory = $true)] [string]$DomainName,\n  [Parameter(Mandatory = $true)] [string]$DomainAdminUsername,\n  [Parameter(Mandatory = $true)] [string]$DomainAdminPassword,\n  [Parameter(Mandatory = $true)] [string]$DomainControllerIp,\n  [string]$OUPath = '',\n  [int]$RetryCount = 60\n)\n\n$ErrorActionPreference = 'Stop'\nNew-Item -ItemType Directory -Path 'C:\\LabTools' -Force | Out-Null\nStart-Transcript -Path 'C:\\LabTools\\join-domain.log' -Append | Out-Null\n\n$cs = Get-CimInstance -ClassName Win32_ComputerSystem\nif ($cs.PartOfDomain -and $cs.Domain -ieq $DomainName) {\n  Write-Output \"Already joined to '$DomainName'.\"\n  Stop-Transcript | Out-Null\n  exit 0\n}\n\n# Wait for LDAP and for DNS to answer for the domain (the DC NIC is also the resolver for this VM)\nfor ($i = 1; $i -le $RetryCount; $i++) {\n  $ldap = Test-NetConnection -ComputerName $DomainControllerIp -Port 389 -InformationLevel Quiet -WarningAction SilentlyContinue\n  $dns = $false\n  try { $dns = [bool](Resolve-DnsName -Name \"_ldap._tcp.dc._msdcs.$DomainName\" -Type SRV -ErrorAction Stop) } catch {}\n  if ($ldap -and $dns) { break }\n  if ($i -eq $RetryCount) { throw \"Domain controller $DomainControllerIp not ready (LDAP=$ldap DNS=$dns) after $RetryCount attempts.\" }\n  Start-Sleep -Seconds 20\n}\n\n$securePassword = ConvertTo-SecureString -String $DomainAdminPassword -AsPlainText -Force\n$credential = New-Object System.Management.Automation.PSCredential (\"$DomainAdminUsername@$DomainName\", $securePassword)\n\n$joined = $false\nfor ($j = 1; $j -le $RetryCount; $j++) {\n  try {\n    if ($OUPath) { Add-Computer -DomainName $DomainName -Credential $credential -OUPath $OUPath -ErrorAction Stop }\n    else { Add-Computer -DomainName $DomainName -Credential $credential -ErrorAction Stop }\n    $joined = $true\n    break\n  }\n  catch {\n    Write-Output \"Join attempt $j failed: $($_.Exception.Message)\"\n    if ($j -eq $RetryCount) { throw }\n    Start-Sleep -Seconds 20\n  }\n}\n\nif (-not $joined) { throw \"Unable to join '$env:COMPUTERNAME' to '$DomainName'.\" }\nWrite-Output \"JOIN-STATUS: Success ($env:COMPUTERNAME -> $DomainName, OU=$OUPath)\"\nStop-Transcript | Out-Null\n\nshutdown.exe /r /t 15 /f /c \"Completing domain join to $DomainName\"\n",
+    "configureScript": "param (\n  [Parameter(Mandatory = $true)] [string]$DomainName,\n  [Parameter(Mandatory = $true)] [string]$DomainNetbiosName,\n  [Parameter(Mandatory = $true)] [string]$Role,            # Workstation | MemberServer | EntraConnectServer\n  [string]$MdeOnboardingBlob = '',                          # raw onboarding JSON; empty = skip (servers may use MDE.Windows extension instead)\n  [string]$HydrationScriptBase64 = '',\n  [string]$HydrationIntervalMinutes = '60',\n  [string]$CloudSuffix = 'us',                              # 'us' = Azure Government / GCC High; 'com' = commercial\n  [string]$EntraConnectDownloadUrl = 'https://download.microsoft.com/download/B/0/0/B00291D0-5A83-4DE7-86F5-980BC00DE05A/AzureADConnect.msi'\n)\n\n$ErrorActionPreference = 'Continue'\nNew-Item -ItemType Directory -Path 'C:\\LabTools' -Force | Out-Null\nStart-Transcript -Path 'C:\\LabTools\\configure-member.log' -Append | Out-Null\n\n# Wait until the domain join (and its reboot) has landed\n$deadline = (Get-Date).AddMinutes(30)\ndo {\n  $cs = Get-CimInstance Win32_ComputerSystem\n  if ($cs.PartOfDomain -and $cs.Domain -ieq $DomainName) { break }\n  Start-Sleep -Seconds 20\n} while ((Get-Date) -lt $deadline)\nif (-not ($cs.PartOfDomain -and $cs.Domain -ieq $DomainName)) { Write-Warning 'Domain join not detected; continuing with local configuration only.' }\n\n# --- Local group membership (lets the lab user RDP via Bastion with domain creds, no local admin needed)\n$adminGroup = if ($Role -eq 'Workstation') { 'LAB-Workstation-Admins' } else { 'LAB-Server-Admins' }\nforeach ($pair in @(@{ Local = 'Administrators'; Domain = $adminGroup }, @{ Local = 'Remote Desktop Users'; Domain = 'LAB-RDP-Users' })) {\n  try {\n    Add-LocalGroupMember -Group $pair.Local -Member \"$DomainNetbiosName\\$($pair.Domain)\" -ErrorAction Stop\n    Write-Output \"Added $DomainNetbiosName\\$($pair.Domain) to $($pair.Local)\"\n  } catch { if ($_.Exception.Message -notlike '*already a member*') { Write-Warning \"$($pair.Local): $($_.Exception.Message)\" } }\n}\n\n# --- Defender / MDE onboarding (direct registry method \u2014 same thing the onboarding .cmd does) ------\nif ($MdeOnboardingBlob) {\n  try {\n    $status = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows Advanced Threat Protection\\Status' -ErrorAction SilentlyContinue\n    if ($status -and $status.OnboardingState -eq 1) { Write-Output 'MDE already onboarded.' }\n    else {\n      $k = 'HKLM:\\SOFTWARE\\Policies\\Microsoft\\Windows Advanced Threat Protection'\n      New-Item -Path $k -Force | Out-Null\n      New-ItemProperty -Path $k -Name OnboardingInfo -Value $MdeOnboardingBlob -PropertyType String -Force | Out-Null\n      # Sample sharing / telemetry defaults used by the official onboarding script\n      New-ItemProperty -Path $k -Name AllowSampleCollection -Value 1 -PropertyType DWord -Force | Out-Null\n      Set-Service -Name Sense -StartupType Automatic\n      Start-Service -Name Sense -ErrorAction SilentlyContinue\n      Start-Sleep -Seconds 20\n      $status = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows Advanced Threat Protection\\Status' -ErrorAction SilentlyContinue\n      Write-Output \"MDE OnboardingState = $($status.OnboardingState) (1 = onboarded)\"\n    }\n  } catch { Write-Warning \"MDE onboarding: $($_.Exception.Message)\" }\n}\n\n# Defender AV hardening that the Purview Endpoint DLP / MDE EDR-in-block-mode scenarios expect\ntry {\n  Set-MpPreference -DisableRealtimeMonitoring $false -MAPSReporting Advanced -SubmitSamplesConsent SendAllSamples -CloudBlockLevel High -ErrorAction Stop\n  Set-MpPreference -EnableNetworkProtection Enabled -ErrorAction SilentlyContinue\n  # ASR rules in AUDIT mode so they generate telemetry without breaking the lab\n  $asr = @('56a863a9-875e-4185-98a7-b882c64b5ce5','7674ba52-37eb-4a4f-a9a1-f0f9a1619a2c','d4f940ab-401b-4efc-aadc-ad5f3c50688a','9e6c4e1f-7d60-472f-ba1a-a39ef669e4b2','be9ba2d9-53ea-4cdc-84e5-9b1eeee46550','01443614-cd74-433a-b99e-2ecdc07bfc25','5beb7efe-fd9a-4556-801d-275e5ffc04cc','d3e037e1-3eb8-44c8-a917-57927947596d','3b576869-a4ec-4529-8536-b80a7769e899','75668c1f-73b5-4cf0-bb93-3ecf5cb7cc84','26190899-1602-49e8-8b27-eb1d0a1ce869','e6db77e5-3df2-4cf1-b95a-636979351e5b','d1e49aac-8f56-4280-b9ba-993a6d77406c','b2b3f03d-6a65-4f7b-a9c7-1c7ef74a9ba4','c1db55ab-c21a-4637-bb3f-a12568109d35','92e97fa1-2edf-4476-bdd6-9dd0b4dddc7b','a8f5898e-1dc8-49a9-9878-85004b8a61e6')\n  Add-MpPreference -AttackSurfaceReductionRules_Ids $asr -AttackSurfaceReductionRules_Actions AuditMode -ErrorAction SilentlyContinue\n  Write-Output 'Defender AV preferences applied (ASR audit mode)'\n} catch { Write-Warning \"Set-MpPreference: $($_.Exception.Message)\" }\n\n# --- Workstations: make hybrid join + Intune enrollment happen without waiting for a logon -------\nif ($Role -eq 'Workstation') {\n  # Hybrid Entra join is driven by the Automatic-Device-Join scheduled task; kick it so the device\n  # writes its certificate to the AD computer object immediately (the sync-join needs an Entra Connect\n  # delta sync afterwards \u2014 see docs/RUNBOOK.md \"Hybrid join recipe\").\n  try { Start-ScheduledTask -TaskPath '\\Microsoft\\Windows\\Workplace Join\\' -TaskName 'Automatic-Device-Join' -ErrorAction Stop } catch {}\n  # Re-run the join attempt a few times over the first hours (covers the \"delta sync then join again\" cycle)\n  $joinAction = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c dsregcmd /join >> C:\\LabTools\\dsregcmd-join.log 2>&1'\n  $joinTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(10) -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Hours 12)\n  Register-ScheduledTask -TaskName 'LAB-HybridJoin-Retry' -Action $joinAction -Trigger $joinTrigger -User 'SYSTEM' -RunLevel Highest -Force | Out-Null\n  # MDM auto-enrollment retry (the GPO creates the EnterpriseMgmt task only at the next policy refresh)\n  $mdmAction = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c gpupdate /target:computer /force & %windir%\\system32\\deviceenroller.exe /c /AutoEnrollMDM >> C:\\LabTools\\autoenroll.log 2>&1'\n  $mdmTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(20) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Hours 24)\n  Register-ScheduledTask -TaskName 'LAB-IntuneAutoEnroll-Retry' -Action $mdmAction -Trigger $mdmTrigger -User 'SYSTEM' -RunLevel Highest -Force | Out-Null\n  Write-Output 'Hybrid-join and Intune auto-enroll retry tasks registered'\n}\n\n# --- Entra Connect staging on the designated member server -----------------------------------------\nif ($Role -eq 'EntraConnectServer') {\n  try {\n    [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12\n    # TLS 1.2 enforcement required by Entra Connect\n    foreach ($p in 'HKLM:\\SOFTWARE\\Microsoft\\.NETFramework\\v4.0.30319', 'HKLM:\\SOFTWARE\\WOW6432Node\\Microsoft\\.NETFramework\\v4.0.30319') {\n      New-Item -Path $p -Force | Out-Null\n      New-ItemProperty -Path $p -Name SystemDefaultTlsVersions -Value 1 -PropertyType DWord -Force | Out-Null\n      New-ItemProperty -Path $p -Name SchUseStrongCrypto -Value 1 -PropertyType DWord -Force | Out-Null\n    }\n    foreach ($side in 'Server', 'Client') {\n      $p = \"HKLM:\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL\\Protocols\\TLS 1.2\\$side\"\n      New-Item -Path $p -Force | Out-Null\n      New-ItemProperty -Path $p -Name Enabled -Value 1 -PropertyType DWord -Force | Out-Null\n      New-ItemProperty -Path $p -Name DisabledByDefault -Value 0 -PropertyType DWord -Force | Out-Null\n    }\n    $msi = 'C:\\LabTools\\AzureADConnect.msi'\n    if (-not (Test-Path $msi)) { Invoke-WebRequest -Uri $EntraConnectDownloadUrl -OutFile $msi -UseBasicParsing }\n    # Install the bits only (the configuration wizard needs a Hybrid Identity Administrator + MFA and is interactive)\n    Start-Process msiexec.exe -ArgumentList \"/i `\"$msi`\" /qn /norestart\" -Wait\n    $readme = @\"\nEntra Connect is installed but NOT configured (that step needs your Hybrid Identity Administrator credentials + MFA).\n1. Sign in to this server through Bastion with your Entra account.\n2. Run 'Microsoft Entra Connect' from the Start menu -> Customize -> Password Hash Synchronization.\n3. Connect to Microsoft Entra ID using the $(if ($CloudSuffix -eq 'us') { 'Azure US Government' } else { 'Azure Commercial' }) endpoints (the wizard picks them from the tenant).\n4. Domain/OU filtering: sync ONLY the lab root OU.\n5. Optional features: Password hash sync, Password writeback (needs P1/P2).\n6. Device options -> Configure Hybrid Microsoft Entra join -> Windows 10 or later -> select this forest -> authentication service: Microsoft Entra ID.\n7. After the first sync: C:\\LabTools\\Invoke-HybridJoinCycle.ps1 (see docs/RUNBOOK.md).\nBEFORE enabling sync, create the cloud-only break-glass Global Admin and exclude it from Conditional Access (lesson #3).\n\"@\n    Set-Content -Path 'C:\\LabTools\\README-EntraConnect.txt' -Value $readme\n    Write-Output 'Entra Connect installer staged and bits installed (configuration pending)'\n  } catch { Write-Warning \"Entra Connect staging: $($_.Exception.Message)\" }\n}\n\n# --- Hydration noise generator --------------------------------------------------------------------\nif ($HydrationScriptBase64) {\n  $hyd = 'C:\\LabTools\\Invoke-LabHydration.ps1'\n  [IO.File]::WriteAllBytes($hyd, [Convert]::FromBase64String($HydrationScriptBase64))\n  $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument \"-NoProfile -ExecutionPolicy Bypass -File `\"$hyd`\" -Role $Role\"\n  $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(15) -RepetitionInterval (New-TimeSpan -Minutes ([int]$HydrationIntervalMinutes))\n  Register-ScheduledTask -TaskName 'LAB-Hydration' -Action $action -Trigger $trigger -User 'SYSTEM' -RunLevel Highest -Force | Out-Null\n  Write-Output 'Hydration task registered'\n}\n\nWrite-Output 'CONFIGURE-STATUS: Success'\nStop-Transcript | Out-Null\n",
+    "configureLinuxScript": "#!/usr/bin/env bash\n# Post-provision configuration for the lab Linux servers (RHEL / Ubuntu / SLES).\n# Entra login is handled by the AADSSHLoginForLinux extension; this script wires the AMA/syslog\n# pipeline, enables auditd, and registers a light hydration generator for hunting telemetry.\nset -uo pipefail\n\nLOGFILE=/var/log/lab-configure.log\nexec > >(tee -a \"$LOGFILE\") 2>&1\necho \"=== lab configure-linux $(date -u) ===\"\n\nCLOUD_SUFFIX=\"${1:-us}\"          # us = Azure Government, com = commercial\nHYDRATION_B64=\"${2:-}\"\nHYDRATION_INTERVAL_MIN=\"${3:-60}\"\n\ndetect_pkg() {\n  if command -v dnf >/dev/null 2>&1; then echo dnf\n  elif command -v apt-get >/dev/null 2>&1; then echo apt\n  elif command -v zypper >/dev/null 2>&1; then echo zypper\n  else echo unknown; fi\n}\nPKG=$(detect_pkg)\necho \"package manager: $PKG\"\n\ninstall_pkg() {\n  case \"$PKG\" in\n    dnf)    dnf install -y \"$@\" ;;\n    apt)    DEBIAN_FRONTEND=noninteractive apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y \"$@\" ;;\n    zypper) zypper --non-interactive install -y \"$@\" ;;\n  esac\n}\n\n# --- auditd: generate the Linux security events Sentinel's Syslog/CEF + MDE will pick up ---------\ncase \"$PKG\" in\n  dnf)    install_pkg audit audit-libs ;;\n  apt)    install_pkg auditd audispd-plugins ;;\n  zypper) install_pkg audit ;;\nesac\nsystemctl enable --now auditd 2>/dev/null || service auditd start 2>/dev/null || true\n\ncat >/etc/audit/rules.d/lab.rules <<'RULES'\n-D\n-b 8192\n-f 1\n-w /etc/passwd -p wa -k identity\n-w /etc/shadow -p wa -k identity\n-w /etc/sudoers -p wa -k priv_esc\n-w /etc/sudoers.d/ -p wa -k priv_esc\n-w /var/log/lastlog -p wa -k logins\n-w /etc/ssh/sshd_config -p wa -k sshd\n-a always,exit -F arch=b64 -S execve -k exec\n-a always,exit -F arch=b64 -S connect -F a2=16 -k net_connect\n-a always,exit -F arch=b64 -F euid=0 -S setuid -S setgid -k priv_change\nRULES\naugenrules --load 2>/dev/null || auditctl -R /etc/audit/rules.d/lab.rules 2>/dev/null || true\nsystemctl restart auditd 2>/dev/null || true\n\n# --- rsyslog present so AMA Syslog DCR has a source --------------------------------------------\ncase \"$PKG\" in\n  apt)    install_pkg rsyslog ;;\n  dnf)    install_pkg rsyslog ;;\n  zypper) install_pkg rsyslog ;;\nesac\nsystemctl enable --now rsyslog 2>/dev/null || true\n\n# --- hydration generator ------------------------------------------------------------------------\nif [ -n \"$HYDRATION_B64\" ]; then\n  echo \"$HYDRATION_B64\" | base64 -d > /usr/local/bin/lab-hydrate.sh\n  chmod +x /usr/local/bin/lab-hydrate.sh\n  cat >/etc/systemd/system/lab-hydrate.service <<SVC\n[Unit]\nDescription=Lab hydration noise generator\n[Service]\nType=oneshot\nExecStart=/usr/local/bin/lab-hydrate.sh\nSVC\n  cat >/etc/systemd/system/lab-hydrate.timer <<TMR\n[Unit]\nDescription=Run lab hydration every ${HYDRATION_INTERVAL_MIN}m\n[Timer]\nOnBootSec=5min\nOnUnitActiveSec=${HYDRATION_INTERVAL_MIN}min\n[Install]\nWantedBy=timers.target\nTMR\n  systemctl daemon-reload\n  systemctl enable --now lab-hydrate.timer 2>/dev/null || true\n  echo \"hydration timer enabled\"\nfi\n\necho \"CONFIGURE-STATUS: Success\"\n",
+    "hydrateWinB64": "cGFyYW0gKAogIFtzdHJpbmddJFJvbGUgPSAnV29ya3N0YXRpb24nICAgIyBXb3Jrc3RhdGlvbiB8IE1lbWJlclNlcnZlciB8IERvbWFpbkNvbnRyb2xsZXIgfCBFbnRyYUNvbm5lY3RTZXJ2ZXIKKQoKIyBMYWIgZGF0YSBoeWRyYXRpb246IGdlbmVyYXRlcyBiZW5pZ24tYnV0LXJlYWxpc3RpYyBhY3Rpdml0eSBzbyB0aGUgU2VudGluZWwgd29ya3NwYWNlIGFuZCBNREUgaGF2ZQojIG1hdGVyaWFsIHRvIGh1bnQgb3Zlci4gRXZlcnl0aGluZyBoZXJlIGlzIG9yZGluYXJ5IGFkbWluaXN0cmF0aXZlL3VzZXIgYmVoYXZpb3VyIHJ1biBhZ2FpbnN0IHRoZQojIGxhYidzIG93biBtYWNoaW5lcyBhbmQgZGlyZWN0b3J5IOKAlCBpdCBpcyBub2lzZSBmb3IgZGV0ZWN0aW9ucywgbm90IGFuIGF0dGFjayBzaW11bGF0aW9uLgoKJEVycm9yQWN0aW9uUHJlZmVyZW5jZSA9ICdTaWxlbnRseUNvbnRpbnVlJwokc3RhbXAgPSBHZXQtRGF0ZSAtRm9ybWF0ICd5eXl5LU1NLWRkIEhIOm1tOnNzJwokbG9nID0gJ0M6XExhYlRvb2xzXGh5ZHJhdGlvbi5sb2cnCiJbJHN0YW1wXSBoeWRyYXRpb24gdGljayAoJFJvbGUpIiB8IEFkZC1Db250ZW50ICRsb2cKCmZ1bmN0aW9uIE5ldy1MYWJVc2VyQWN0aXZpdHkgewogICMgU2ltdWxhdGUgYW4gaW50ZXJhY3RpdmUgdXNlcjogY3JlYXRlIGZpbGVzLCBydW4gY29tbW9uIGJpbmFyaWVzLCB0b3VjaCB0aGUgcmVnaXN0cnkgcnVuLWtleXMsCiAgIyBtYWtlIGEgZmV3IHdlYiByZXF1ZXN0cyB0byBNaWNyb3NvZnQgZW5kcG9pbnRzLgogICR0bXAgPSBKb2luLVBhdGggJGVudjpURU1QICgibGFiXyIgKyBbZ3VpZF06Ok5ld0d1aWQoKS5Ub1N0cmluZygnTicpLlN1YnN0cmluZygwLDgpKQogIE5ldy1JdGVtIC1JdGVtVHlwZSBEaXJlY3RvcnkgLVBhdGggJHRtcCAtRm9yY2UgfCBPdXQtTnVsbAogIDEuLjUgfCBGb3JFYWNoLU9iamVjdCB7ICJzYW1wbGUgbGluZSAkXyAkKEdldC1SYW5kb20pIiB8IE91dC1GaWxlIChKb2luLVBhdGggJHRtcCAiZG9jJF8udHh0IikgfQogIEdldC1Qcm9jZXNzIHwgT3V0LUZpbGUgKEpvaW4tUGF0aCAkdG1wICdwcm9jLnR4dCcpCiAgR2V0LVNlcnZpY2UgIHwgT3V0LUZpbGUgKEpvaW4tUGF0aCAkdG1wICdzdmMudHh0JykKICAmIHdob2FtaSAvYWxsICB8IE91dC1OdWxsCiAgJiBpcGNvbmZpZyAvYWxsIHwgT3V0LU51bGwKICAmIG5sdGVzdCAvZHNnZXRkYzokZW52OlVTRVJETlNET01BSU4gfCBPdXQtTnVsbAogIHRyeSB7IEludm9rZS1XZWJSZXF1ZXN0IC1VcmkgJ2h0dHBzOi8vd3d3Lm1pY3Jvc29mdC5jb20nIC1Vc2VCYXNpY1BhcnNpbmcgLVRpbWVvdXRTZWMgMTUgfCBPdXQtTnVsbCB9IGNhdGNoIHt9CiAgUmVtb3ZlLUl0ZW0gJHRtcCAtUmVjdXJzZSAtRm9yY2UKfQoKZnVuY3Rpb24gTmV3LUxhYkRpcmVjdG9yeUFjdGl2aXR5IHsKICBJbXBvcnQtTW9kdWxlIEFjdGl2ZURpcmVjdG9yeQogICMgUm91dGluZSBkaXJlY3RvcnkgcmVhZHMgKyBhIGNodXJuIHVzZXIgd2hvc2UgZ3JvdXAgbWVtYmVyc2hpcCBmbGlwcyAoZ2VuZXJhdGVzIDQ3MjgvNDcyOS80NzM4KQogIEdldC1BRFVzZXIgLUZpbHRlciAqIHwgT3V0LU51bGwKICBHZXQtQURDb21wdXRlciAtRmlsdGVyICogfCBPdXQtTnVsbAogICRjaHVybiA9ICdsYWIuY2h1cm4nCiAgaWYgKC1ub3QgKEdldC1BRFVzZXIgLUZpbHRlciAic0FNQWNjb3VudE5hbWUgLWVxICckY2h1cm4nIikpIHsKICAgICRvdSA9IChHZXQtQURPcmdhbml6YXRpb25hbFVuaXQgLUZpbHRlciAibmFtZSAtZXEgJ1VzZXJzJyIgfCBTZWxlY3QtT2JqZWN0IC1GaXJzdCAxKS5EaXN0aW5ndWlzaGVkTmFtZQogICAgaWYgKCRvdSkgewogICAgICBOZXctQURVc2VyIC1OYW1lICdMYWIgQ2h1cm4nIC1TYW1BY2NvdW50TmFtZSAkY2h1cm4gLVBhdGggJG91IGAKICAgICAgICAtQWNjb3VudFBhc3N3b3JkIChDb252ZXJ0VG8tU2VjdXJlU3RyaW5nICgnQycrW2d1aWRdOjpOZXdHdWlkKCkuVG9TdHJpbmcoJ04nKS5TdWJzdHJpbmcoMCwxNCkrJyEnKSAtQXNQbGFpblRleHQgLUZvcmNlKSBgCiAgICAgICAgLUVuYWJsZWQgJHRydWUKICAgIH0KICB9CiAgJGdycCA9IEdldC1BREdyb3VwIC1GaWx0ZXIgIm5hbWUgLWVxICdMQUItU09DLUFuYWx5c3RzJyIKICBpZiAoJGdycCAtYW5kIChHZXQtQURVc2VyIC1GaWx0ZXIgInNBTUFjY291bnROYW1lIC1lcSAnJGNodXJuJyIpKSB7CiAgICBpZiAoR2V0LUFER3JvdXBNZW1iZXIgJGdycCB8IFdoZXJlLU9iamVjdCBTYW1BY2NvdW50TmFtZSAtZXEgJGNodXJuKSB7IFJlbW92ZS1BREdyb3VwTWVtYmVyICRncnAgLU1lbWJlcnMgJGNodXJuIC1Db25maXJtOiRmYWxzZSB9CiAgICBlbHNlIHsgQWRkLUFER3JvdXBNZW1iZXIgJGdycCAtTWVtYmVycyAkY2h1cm4gfQogIH0KICAjIEEgY291cGxlIG9mIGRlbGliZXJhdGVseSBmYWlsaW5nIEtlcmJlcm9zIHByZS1hdXRocyAoNDc3MS80NjI1KSBmcm9tIGEgYmFkIHBhc3N3b3JkIGF0dGVtcHQKICAkYmFkID0gTmV3LU9iamVjdCBTeXN0ZW0uTWFuYWdlbWVudC5BdXRvbWF0aW9uLlBTQ3JlZGVudGlhbCgiJGVudjpVU0VSRE9NQUlOXCRjaHVybiIsIChDb252ZXJ0VG8tU2VjdXJlU3RyaW5nICd3cm9uZy1wYXNzd29yZC0xMjMnIC1Bc1BsYWluVGV4dCAtRm9yY2UpKQogIFN0YXJ0LUpvYiB7IHBhcmFtKCRjKSBHZXQtV21pT2JqZWN0IFdpbjMyX0NvbXB1dGVyU3lzdGVtIC1DcmVkZW50aWFsICRjIC1FcnJvckFjdGlvbiBTaWxlbnRseUNvbnRpbnVlIH0gLUFyZ3VtZW50TGlzdCAkYmFkIHwgV2FpdC1Kb2IgLVRpbWVvdXQgMjAgfCBSZW1vdmUtSm9iIC1Gb3JjZQp9CgpOZXctTGFiVXNlckFjdGl2aXR5CmlmICgkUm9sZSAtZXEgJ0RvbWFpbkNvbnRyb2xsZXInKSB7IE5ldy1MYWJEaXJlY3RvcnlBY3Rpdml0eSB9CiJbJHN0YW1wXSBkb25lIiB8IEFkZC1Db250ZW50ICRsb2cK",
+    "hydrateLinuxB64": "IyEvdXNyL2Jpbi9lbnYgYmFzaAojIExhYiBkYXRhIGh5ZHJhdGlvbiBmb3IgTGludXg6IG9yZGluYXJ5IGFkbWluL3VzZXIgYWN0aXZpdHkgc28gU3lzbG9nICsgTURFIGZvciBMaW51eCBoYXZlIG1hdGVyaWFsCiMgdG8gaHVudCBvdmVyLiBCZW5pZ24gbm9pc2UgYWdhaW5zdCB0aGUgbGFiJ3Mgb3duIGJveCwgbm90IGFuIGF0dGFjayBzaW11bGF0aW9uLgpzZXQgLXVvIHBpcGVmYWlsClRTPSQoZGF0ZSAtdSAnKyVZLSVtLSVkVCVIOiVNOiVTWicpCmVjaG8gIlskVFNdIGxpbnV4IGh5ZHJhdGlvbiB0aWNrIG9uICQoaG9zdG5hbWUpIiB8IGxvZ2dlciAtdCBsYWItaHlkcmF0ZQoKVE1QPSQobWt0ZW1wIC1kIC90bXAvbGFiLlhYWFhYWCkKZm9yIGkgaW4gMSAyIDMgNCA1OyBkbyBlY2hvICJzYW1wbGUgJGkgJFJBTkRPTSIgPiAiJFRNUC9kb2MkaS50eHQiOyBkb25lCmxzIC1sYSAvZXRjID4vZGV2L251bGwgMj4mMQppZCA+L2Rldi9udWxsIDI+JjEKcHMgYXV4ID4vZGV2L251bGwgMj4mMQpzcyAtdHVuYXAgPi9kZXYvbnVsbCAyPiYxIHx8IG5ldHN0YXQgLXR1bmFwID4vZGV2L251bGwgMj4mMSB8fCB0cnVlCmdldGVudCBwYXNzd2QgPi9kZXYvbnVsbCAyPiYxCgojIEEgc3VkbyBpbnZvY2F0aW9uIChnZW5lcmF0ZXMgYW4gYXVkaXRkIHByaXYtZXNjIGV2ZW50KSBhbmQgYSBiZW5pZ24gb3V0Ym91bmQgcmVxdWVzdApzdWRvIC1uIHRydWUgMj4vZGV2L251bGwgfHwgdHJ1ZQpjdXJsIC1zIC1tIDE1IGh0dHBzOi8vd3d3Lm1pY3Jvc29mdC5jb20gPi9kZXYvbnVsbCAyPiYxIHx8IHRydWUKCiMgQSBmYWlsZWQgc3UgdG8gZ2VuZXJhdGUgYW4gYXV0aCBmYWlsdXJlIGluIC92YXIvbG9nIChwaWNrZWQgdXAgYnkgdGhlIFN5c2xvZyBEQ1IgYXV0aCBmYWNpbGl0eSkKZWNobyAid3JvbmctcGFzc3dvcmQiIHwgc3UgLSBub25leGlzdGVudGxhYnVzZXIgMj4vZGV2L251bGwgfHwgdHJ1ZQoKcm0gLXJmICIkVE1QIgplY2hvICJbJFRTXSBsaW51eCBoeWRyYXRpb24gZG9uZSIgfCBsb2dnZXIgLXQgbGFiLWh5ZHJhdGUK",
+    "vmAdminRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1c0163c0-47e6-4577-8991-ea5c82e286e4')]",
+    "vmUserRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'fb879df8-f326-4884-b1cf-06f3ad86be52')]",
+    "dnsServerList": "[union(createArray(parameters('domainControllerPrivateIp')), parameters('additionalDnsServers'))]",
+    "serverImage": {
+      "publisher": "[parameters('serverImagePublisher')]",
+      "offer": "[parameters('serverImageOffer')]",
+      "sku": "[parameters('serverImageSku')]",
+      "version": "[parameters('serverImageVersion')]"
+    },
+    "clientImage": {
+      "publisher": "[parameters('clientImagePublisher')]",
+      "offer": "[parameters('clientImageOffer')]",
+      "sku": "[parameters('clientImageSku')]",
+      "version": "[parameters('clientImageVersion')]"
+    },
+    "windowsVms": [
+      {
+        "name": "[format('{0}-dc01', parameters('prefix'))]",
+        "size": "[parameters('serverVmSize')]",
+        "image": "[variables('serverImage')]",
+        "role": "DomainController",
+        "isDc": true,
+        "isServer": true
+      },
+      {
+        "name": "[format('{0}-ms01', parameters('prefix'))]",
+        "size": "[parameters('serverVmSize')]",
+        "image": "[variables('serverImage')]",
+        "role": "EntraConnectServer",
+        "isDc": false,
+        "isServer": true
+      },
+      {
+        "name": "[format('{0}-ms02', parameters('prefix'))]",
+        "size": "[parameters('serverVmSize')]",
+        "image": "[variables('serverImage')]",
+        "role": "MemberServer",
+        "isDc": false,
+        "isServer": true
+      },
+      {
+        "name": "[format('{0}-cl01', parameters('prefix'))]",
+        "size": "[parameters('clientVmSize')]",
+        "image": "[variables('clientImage')]",
+        "role": "Workstation",
+        "isDc": false,
+        "isServer": false
+      },
+      {
+        "name": "[format('{0}-cl02', parameters('prefix'))]",
+        "size": "[parameters('clientVmSize')]",
+        "image": "[variables('clientImage')]",
+        "role": "Workstation",
+        "isDc": false,
+        "isServer": false
+      },
+      {
+        "name": "[format('{0}-cl03', parameters('prefix'))]",
+        "size": "[parameters('clientVmSize')]",
+        "image": "[variables('clientImage')]",
+        "role": "Workstation",
+        "isDc": false,
+        "isServer": false
+      }
+    ],
+    "linuxVms": [
+      {
+        "name": "[format('{0}-rhel01', parameters('prefix'))]",
+        "image": {
+          "publisher": "RedHat",
+          "offer": "RHEL",
+          "sku": "9-lvm-gen2",
+          "version": "latest"
+        }
+      },
+      {
+        "name": "[format('{0}-ubu01', parameters('prefix'))]",
+        "image": {
+          "publisher": "Canonical",
+          "offer": "0001-com-ubuntu-server-jammy",
+          "sku": "22_04-lts-gen2",
+          "version": "latest"
+        }
+      },
+      {
+        "name": "[format('{0}-sles01', parameters('prefix'))]",
+        "image": {
+          "publisher": "SUSE",
+          "offer": "sles-15-sp5",
+          "sku": "gen2",
+          "version": "latest"
+        }
+      }
+    ],
+    "memberWinCount": 5,
+    "domainDn": "[format('DC={0}', join(split(parameters('domainName'), '.'), ',DC='))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-nic', variables('windowsVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "copy": {
+        "name": "winNicLoop",
+        "count": "[length(variables('windowsVms'))]"
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[parameters('subnetResourceId')]"
+              },
+              "privateIPAllocationMethod": "[if(variables('windowsVms')[copyIndex()].isDc, 'Static', 'Dynamic')]",
+              "privateIPAddress": "[if(variables('windowsVms')[copyIndex()].isDc, parameters('domainControllerPrivateIp'), null())]"
+            }
+          }
+        ],
+        "dnsSettings": "[if(variables('windowsVms')[copyIndex()].isDc, null(), createObject('dnsServers', variables('dnsServerList')))]"
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('windowsVms')[copyIndex()].name]",
+      "location": "[parameters('location')]",
+      "copy": {
+        "name": "winVmLoop",
+        "count": "[length(variables('windowsVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', variables('windowsVms')[copyIndex()].name))]"
+      ],
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[variables('windowsVms')[copyIndex()].size]"
+        },
+        "osProfile": {
+          "computerName": "[take(variables('windowsVms')[copyIndex()].name, 15)]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]",
+          "windowsConfiguration": {
+            "provisionVMAgent": true,
+            "enableAutomaticUpdates": true
+          }
+        },
+        "storageProfile": {
+          "imageReference": "[variables('windowsVms')[copyIndex()].image]",
+          "osDisk": {
+            "createOption": "FromImage",
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS"
+            }
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', variables('windowsVms')[copyIndex()].name))]",
+              "properties": {
+                "primary": true
+              }
+            }
+          ]
+        },
+        "securityProfile": {
+          "securityType": "TrustedLaunch",
+          "uefiSettings": {
+            "secureBootEnabled": true,
+            "vTpmEnabled": true
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/runCommands",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/promote-domain-controller', variables('windowsVms')[0].name)]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[0].name)]"
+      ],
+      "properties": {
+        "asyncExecution": true,
+        "treatFailureAsDeploymentFailure": false,
+        "timeoutInSeconds": 3600,
+        "source": {
+          "script": "[variables('promoteScript')]"
+        },
+        "parameters": [
+          {
+            "name": "DomainName",
+            "value": "[parameters('domainName')]"
+          },
+          {
+            "name": "DomainNetbiosName",
+            "value": "[parameters('domainNetbiosName')]"
+          },
+          {
+            "name": "DnsForwarders",
+            "value": "[parameters('dnsForwarders')]"
+          }
+        ],
+        "protectedParameters": [
+          {
+            "name": "SafeModeAdminPassword",
+            "value": "[parameters('safeModeAdminPassword')]"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/runCommands",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/configure-forest-baseline', variables('windowsVms')[0].name)]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/runCommands', variables('windowsVms')[0].name, 'promote-domain-controller')]"
+      ],
+      "properties": {
+        "asyncExecution": false,
+        "treatFailureAsDeploymentFailure": false,
+        "timeoutInSeconds": 3600,
+        "source": {
+          "script": "[variables('baselineScript')]"
+        },
+        "parameters": [
+          {
+            "name": "DomainName",
+            "value": "[parameters('domainName')]"
+          },
+          {
+            "name": "DomainNetbiosName",
+            "value": "[parameters('domainNetbiosName')]"
+          },
+          {
+            "name": "OuRoot",
+            "value": "[parameters('ouRoot')]"
+          },
+          {
+            "name": "UpnSuffix",
+            "value": "[parameters('upnSuffix')]"
+          },
+          {
+            "name": "LabUserName",
+            "value": "[parameters('labUserName')]"
+          },
+          {
+            "name": "DnsForwarders",
+            "value": "[parameters('dnsForwarders')]"
+          },
+          {
+            "name": "IntuneCredentialType",
+            "value": "[parameters('intuneCredentialType')]"
+          },
+          {
+            "name": "EnrollmentUrlSuffix",
+            "value": "[parameters('cloudSuffix')]"
+          },
+          {
+            "name": "CreateIntuneGpo",
+            "value": "true"
+          },
+          {
+            "name": "HydrationScriptBase64",
+            "value": "[if(parameters('deployHydration'), variables('hydrateWinB64'), '')]"
+          },
+          {
+            "name": "HydrationIntervalMinutes",
+            "value": "[parameters('hydrationIntervalMinutes')]"
+          }
+        ],
+        "protectedParameters": [
+          {
+            "name": "LabUserPassword",
+            "value": "[parameters('labUserPassword')]"
+          },
+          {
+            "name": "MdeOnboardingBlob",
+            "value": "[parameters('mdeOnboardingBlob')]"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/runCommands",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/join-domain', variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].name)]",
+      "location": "[parameters('location')]",
+      "copy": {
+        "name": "joinLoop",
+        "count": "[variables('memberWinCount')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/runCommands', variables('windowsVms')[0].name, 'configure-forest-baseline')]",
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].name)]"
+      ],
+      "properties": {
+        "asyncExecution": false,
+        "treatFailureAsDeploymentFailure": false,
+        "timeoutInSeconds": 2700,
+        "source": {
+          "script": "[variables('joinScript')]"
+        },
+        "parameters": [
+          {
+            "name": "DomainName",
+            "value": "[parameters('domainName')]"
+          },
+          {
+            "name": "DomainAdminUsername",
+            "value": "[parameters('adminUsername')]"
+          },
+          {
+            "name": "DomainControllerIp",
+            "value": "[parameters('domainControllerPrivateIp')]"
+          },
+          {
+            "name": "OUPath",
+            "value": "[if(variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].isServer, format('OU=MemberServers,OU={0},{1}', parameters('ouRoot'), variables('domainDn')), format('OU=Workstations,OU={0},{1}', parameters('ouRoot'), variables('domainDn')))]"
+          }
+        ],
+        "protectedParameters": [
+          {
+            "name": "DomainAdminPassword",
+            "value": "[parameters('adminPassword')]"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/runCommands",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/configure-member', variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].name)]",
+      "location": "[parameters('location')]",
+      "copy": {
+        "name": "configureLoop",
+        "count": "[variables('memberWinCount')]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/runCommands', variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].name, 'join-domain')]"
+      ],
+      "properties": {
+        "asyncExecution": true,
+        "treatFailureAsDeploymentFailure": false,
+        "timeoutInSeconds": 3600,
+        "source": {
+          "script": "[variables('configureScript')]"
+        },
+        "parameters": [
+          {
+            "name": "DomainName",
+            "value": "[parameters('domainName')]"
+          },
+          {
+            "name": "DomainNetbiosName",
+            "value": "[parameters('domainNetbiosName')]"
+          },
+          {
+            "name": "Role",
+            "value": "[variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].role]"
+          },
+          {
+            "name": "HydrationScriptBase64",
+            "value": "[if(parameters('deployHydration'), variables('hydrateWinB64'), '')]"
+          },
+          {
+            "name": "HydrationIntervalMinutes",
+            "value": "[parameters('hydrationIntervalMinutes')]"
+          },
+          {
+            "name": "CloudSuffix",
+            "value": "[parameters('cloudSuffix')]"
+          }
+        ],
+        "protectedParameters": [
+          {
+            "name": "MdeOnboardingBlob",
+            "value": "[if(variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].isServer, '', parameters('mdeOnboardingBlob'))]"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/AADLoginForWindows', variables('windowsVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "copy": {
+        "name": "aadWinLoop",
+        "count": "[length(variables('windowsVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[copyIndex()].name)]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Azure.ActiveDirectory",
+        "type": "AADLoginForWindows",
+        "typeHandlerVersion": "2.2",
+        "autoUpgradeMinorVersion": true
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/AzureMonitorWindowsAgent', variables('windowsVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "copy": {
+        "name": "amaWinLoop",
+        "count": "[length(variables('windowsVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/extensions', variables('windowsVms')[copyIndex()].name, 'AADLoginForWindows')]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Azure.Monitor",
+        "type": "AzureMonitorWindowsAgent",
+        "typeHandlerVersion": "1.0",
+        "autoUpgradeMinorVersion": true,
+        "enableAutomaticUpgrade": true
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/MDE.Windows', variables('windowsVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "condition": "[and(parameters('deployMde'), variables('windowsVms')[copyIndex()].isServer)]",
+      "copy": {
+        "name": "mdeWinLoop",
+        "count": "[length(variables('windowsVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/extensions', variables('windowsVms')[copyIndex()].name, 'AzureMonitorWindowsAgent')]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Azure.AzureDefenderForServers",
+        "type": "MDE.Windows",
+        "typeHandlerVersion": "1.0",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "forceReOnboarding": false,
+          "provisioningMode": "Auto"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[copyIndex()].name), variables('vmAdminRoleId'), parameters('entraLoginPrincipalId'))]",
+      "condition": "[and(parameters('assignVmAdminRole'), not(empty(parameters('entraLoginPrincipalId'))))]",
+      "copy": {
+        "name": "winAdminRbac",
+        "count": "[length(variables('windowsVms'))]"
+      },
+      "scope": "[format('Microsoft.Compute/virtualMachines/{0}', variables('windowsVms')[copyIndex()].name)]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[copyIndex()].name)]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('vmAdminRoleId')]",
+        "principalId": "[parameters('entraLoginPrincipalId')]",
+        "principalType": "[parameters('entraPrincipalType')]"
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[copyIndex()].name), variables('vmUserRoleId'), parameters('entraLoginPrincipalId'))]",
+      "condition": "[and(parameters('assignVmUserRole'), not(empty(parameters('entraLoginPrincipalId'))))]",
+      "copy": {
+        "name": "winUserRbac",
+        "count": "[length(variables('windowsVms'))]"
+      },
+      "scope": "[format('Microsoft.Compute/virtualMachines/{0}', variables('windowsVms')[copyIndex()].name)]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[copyIndex()].name)]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('vmUserRoleId')]",
+        "principalId": "[parameters('entraLoginPrincipalId')]",
+        "principalType": "[parameters('entraPrincipalType')]"
+      }
+    },
+    {
+      "type": "Microsoft.DevTestLab/schedules",
+      "apiVersion": "2018-09-15",
+      "name": "[format('shutdown-computevm-{0}', variables('windowsVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "condition": "[not(empty(parameters('autoShutdownTime')))]",
+      "copy": {
+        "name": "winShutdownLoop",
+        "count": "[length(variables('windowsVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[copyIndex()].name)]"
+      ],
+      "properties": {
+        "status": "Enabled",
+        "taskType": "ComputeVmShutdownTask",
+        "dailyRecurrence": {
+          "time": "[parameters('autoShutdownTime')]"
+        },
+        "timeZoneId": "[parameters('autoShutdownTimeZone')]",
+        "notificationSettings": {
+          "status": "Disabled",
+          "timeInMinutes": 30
+        },
+        "targetResourceId": "[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[copyIndex()].name)]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}-nic', variables('linuxVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "condition": "[parameters('deployLinuxVms')]",
+      "copy": {
+        "name": "lnxNicLoop",
+        "count": "[length(variables('linuxVms'))]"
+      },
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[parameters('subnetResourceId')]"
+              },
+              "privateIPAllocationMethod": "Dynamic"
+            }
+          }
+        ],
+        "dnsSettings": {
+          "dnsServers": "[variables('dnsServerList')]"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('linuxVms')[copyIndex()].name]",
+      "location": "[parameters('location')]",
+      "condition": "[parameters('deployLinuxVms')]",
+      "copy": {
+        "name": "lnxVmLoop",
+        "count": "[length(variables('linuxVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', variables('linuxVms')[copyIndex()].name))]"
+      ],
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "hardwareProfile": {
+          "vmSize": "[parameters('linuxVmSize')]"
+        },
+        "osProfile": {
+          "computerName": "[take(variables('linuxVms')[copyIndex()].name, 15)]",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]",
+          "linuxConfiguration": {
+            "disablePasswordAuthentication": false,
+            "provisionVMAgent": true,
+            "patchSettings": {
+              "patchMode": "ImageDefault"
+            }
+          }
+        },
+        "storageProfile": {
+          "imageReference": "[variables('linuxVms')[copyIndex()].image]",
+          "osDisk": {
+            "createOption": "FromImage",
+            "managedDisk": {
+              "storageAccountType": "Premium_LRS"
+            }
+          }
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', variables('linuxVms')[copyIndex()].name))]",
+              "properties": {
+                "primary": true
+              }
+            }
+          ]
+        },
+        "securityProfile": {
+          "securityType": "TrustedLaunch",
+          "uefiSettings": {
+            "secureBootEnabled": true,
+            "vTpmEnabled": true
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/AADSSHLoginForLinux', variables('linuxVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "condition": "[parameters('deployLinuxVms')]",
+      "copy": {
+        "name": "aadLnxLoop",
+        "count": "[length(variables('linuxVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('linuxVms')[copyIndex()].name)]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Azure.ActiveDirectory",
+        "type": "AADSSHLoginForLinux",
+        "typeHandlerVersion": "1.0",
+        "autoUpgradeMinorVersion": true
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/AzureMonitorLinuxAgent', variables('linuxVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "condition": "[parameters('deployLinuxVms')]",
+      "copy": {
+        "name": "amaLnxLoop",
+        "count": "[length(variables('linuxVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/extensions', variables('linuxVms')[copyIndex()].name, 'AADSSHLoginForLinux')]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Azure.Monitor",
+        "type": "AzureMonitorLinuxAgent",
+        "typeHandlerVersion": "1.0",
+        "autoUpgradeMinorVersion": true,
+        "enableAutomaticUpgrade": true
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/runCommands",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/configure-linux', variables('linuxVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "condition": "[parameters('deployLinuxVms')]",
+      "copy": {
+        "name": "lnxConfigLoop",
+        "count": "[length(variables('linuxVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/extensions', variables('linuxVms')[copyIndex()].name, 'AzureMonitorLinuxAgent')]"
+      ],
+      "properties": {
+        "asyncExecution": true,
+        "treatFailureAsDeploymentFailure": false,
+        "timeoutInSeconds": 1800,
+        "source": {
+          "script": "[variables('configureLinuxScript')]"
+        },
+        "parameters": [
+          {
+            "name": "arg1",
+            "value": "[parameters('cloudSuffix')]"
+          },
+          {
+            "name": "arg2",
+            "value": "[if(parameters('deployHydration'), variables('hydrateLinuxB64'), '')]"
+          },
+          {
+            "name": "arg3",
+            "value": "[parameters('hydrationIntervalMinutes')]"
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/MDE.Linux', variables('linuxVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "condition": "[and(parameters('deployLinuxVms'), parameters('deployMde'))]",
+      "copy": {
+        "name": "mdeLnxLoop",
+        "count": "[length(variables('linuxVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/extensions', variables('linuxVms')[copyIndex()].name, 'AzureMonitorLinuxAgent')]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Azure.AzureDefenderForServers",
+        "type": "MDE.Linux",
+        "typeHandlerVersion": "1.0",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "forceReOnboarding": false,
+          "provisioningMode": "Auto"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceId('Microsoft.Compute/virtualMachines', variables('linuxVms')[copyIndex()].name), variables('vmAdminRoleId'), parameters('entraLoginPrincipalId'))]",
+      "condition": "[and(parameters('deployLinuxVms'), parameters('assignVmAdminRole'), not(empty(parameters('entraLoginPrincipalId'))))]",
+      "copy": {
+        "name": "lnxAdminRbac",
+        "count": "[length(variables('linuxVms'))]"
+      },
+      "scope": "[format('Microsoft.Compute/virtualMachines/{0}', variables('linuxVms')[copyIndex()].name)]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('linuxVms')[copyIndex()].name)]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('vmAdminRoleId')]",
+        "principalId": "[parameters('entraLoginPrincipalId')]",
+        "principalType": "[parameters('entraPrincipalType')]"
+      }
+    },
+    {
+      "type": "Microsoft.DevTestLab/schedules",
+      "apiVersion": "2018-09-15",
+      "name": "[format('shutdown-computevm-{0}', variables('linuxVms')[copyIndex()].name)]",
+      "location": "[parameters('location')]",
+      "condition": "[and(parameters('deployLinuxVms'), not(empty(parameters('autoShutdownTime'))))]",
+      "copy": {
+        "name": "lnxShutdownLoop",
+        "count": "[length(variables('linuxVms'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines', variables('linuxVms')[copyIndex()].name)]"
+      ],
+      "properties": {
+        "status": "Enabled",
+        "taskType": "ComputeVmShutdownTask",
+        "dailyRecurrence": {
+          "time": "[parameters('autoShutdownTime')]"
+        },
+        "timeZoneId": "[parameters('autoShutdownTimeZone')]",
+        "notificationSettings": {
+          "status": "Disabled",
+          "timeInMinutes": 30
+        },
+        "targetResourceId": "[resourceId('Microsoft.Compute/virtualMachines', variables('linuxVms')[copyIndex()].name)]"
+      }
+    }
+  ],
+  "outputs": {
+    "windowsVmNames": {
+      "type": "array",
+      "value": "[createArray(format('{0}-dc01', parameters('prefix')), format('{0}-ms01', parameters('prefix')), format('{0}-ms02', parameters('prefix')), format('{0}-cl01', parameters('prefix')), format('{0}-cl02', parameters('prefix')), format('{0}-cl03', parameters('prefix')))]"
+    },
+    "linuxVmNames": {
+      "type": "array",
+      "value": "[if(parameters('deployLinuxVms'), createArray(format('{0}-rhel01', parameters('prefix')), format('{0}-ubu01', parameters('prefix')), format('{0}-sles01', parameters('prefix'))), createArray())]"
+    },
+    "domainControllerName": {
+      "type": "string",
+      "value": "[format('{0}-dc01', parameters('prefix'))]"
+    }
+  }
+}

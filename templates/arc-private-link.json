@@ -1,0 +1,141 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Azure Arc-enabled servers Private Link Scope + private endpoint + Arc private DNS zones (cloud-aware) linked to the hub and workload VNets. Optionally deploys an Azure Private DNS Resolver inbound endpoint so on-prem / spoke machines resolve the private zones. Azure Monitor Private Link Scope for Arc guest-configuration / Change Tracking is created by the MLZ hub; this module adds the Arc (HybridCompute) scope and zones."
+  },
+  "parameters": {
+    "location": { "type": "string" },
+    "prefix": { "type": "string" },
+    "privateEndpointSubnetResourceId": { "type": "string", "metadata": { "description": "Subnet to host the Arc PLS private endpoint (typically the tier3 workload subnet)." } },
+    "hubVirtualNetworkResourceId": { "type": "string" },
+    "workloadVirtualNetworkResourceId": { "type": "string" },
+    "publicNetworkAccess": { "type": "string", "defaultValue": "Disabled", "allowedValues": [ "Enabled", "Disabled" ] },
+    "deployPrivateDnsResolver": { "type": "bool", "defaultValue": false, "metadata": { "description": "Deploy an Azure Private DNS Resolver inbound endpoint. Requires resolverSubnetResourceId (a subnet delegated to Microsoft.Network/dnsResolvers)." } },
+    "resolverSubnetResourceId": { "type": "string", "defaultValue": "" }
+  },
+  "variables": {
+    "cloudZoneSuffix": "[if(equals(environment().name, 'AzureUSGovernment'), 'us', 'com')]",
+    "arcZones": [
+      "[format('privatelink.his.arc.azure.{0}', variables('cloudZoneSuffix'))]",
+      "[format('privatelink.guestconfiguration.azure.{0}', variables('cloudZoneSuffix'))]",
+      "[format('privatelink.dp.kubernetesconfiguration.azure.{0}', variables('cloudZoneSuffix'))]"
+    ],
+    "plsName": "[format('{0}-pls-arc', parameters('prefix'))]",
+    "peName": "[format('{0}-pe-arc', parameters('prefix'))]",
+    "resolverName": "[format('{0}-dnspr', parameters('prefix'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.HybridCompute/privateLinkScopes",
+      "apiVersion": "2023-10-03-preview",
+      "name": "[variables('plsName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "publicNetworkAccess": "[parameters('publicNetworkAccess')]"
+      }
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints",
+      "apiVersion": "2023-09-01",
+      "name": "[variables('peName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [ "[resourceId('Microsoft.HybridCompute/privateLinkScopes', variables('plsName'))]" ],
+      "properties": {
+        "subnet": { "id": "[parameters('privateEndpointSubnetResourceId')]" },
+        "customNetworkInterfaceName": "[format('{0}-nic', variables('peName'))]",
+        "privateLinkServiceConnections": [
+          {
+            "name": "[variables('peName')]",
+            "properties": {
+              "privateLinkServiceId": "[resourceId('Microsoft.HybridCompute/privateLinkScopes', variables('plsName'))]",
+              "groupIds": [ "hybridcompute" ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones",
+      "apiVersion": "2020-06-01",
+      "name": "[variables('arcZones')[copyIndex()]]",
+      "location": "global",
+      "copy": { "name": "zoneLoop", "count": "[length(variables('arcZones'))]" }
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      "apiVersion": "2020-06-01",
+      "name": "[format('{0}/link-workload', variables('arcZones')[copyIndex()])]",
+      "location": "global",
+      "copy": { "name": "zoneLinkWorkloadLoop", "count": "[length(variables('arcZones'))]" },
+      "dependsOn": [ "[resourceId('Microsoft.Network/privateDnsZones', variables('arcZones')[copyIndex()])]" ],
+      "properties": {
+        "registrationEnabled": false,
+        "virtualNetwork": { "id": "[parameters('workloadVirtualNetworkResourceId')]" }
+      }
+    },
+    {
+      "type": "Microsoft.Network/privateDnsZones/virtualNetworkLinks",
+      "apiVersion": "2020-06-01",
+      "name": "[format('{0}/link-hub', variables('arcZones')[copyIndex()])]",
+      "location": "global",
+      "copy": { "name": "zoneLinkHubLoop", "count": "[length(variables('arcZones'))]" },
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateDnsZones', variables('arcZones')[copyIndex()])]",
+        "[resourceId('Microsoft.Network/privateDnsZones/virtualNetworkLinks', variables('arcZones')[copyIndex()], 'link-workload')]"
+      ],
+      "properties": {
+        "registrationEnabled": false,
+        "virtualNetwork": { "id": "[parameters('hubVirtualNetworkResourceId')]" }
+      }
+    },
+    {
+      "type": "Microsoft.Network/privateEndpoints/privateDnsZoneGroups",
+      "apiVersion": "2023-09-01",
+      "name": "[format('{0}/arc-zone-group', variables('peName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Network/privateEndpoints', variables('peName'))]",
+        "[resourceId('Microsoft.Network/privateDnsZones', variables('arcZones')[0])]",
+        "[resourceId('Microsoft.Network/privateDnsZones', variables('arcZones')[1])]",
+        "[resourceId('Microsoft.Network/privateDnsZones', variables('arcZones')[2])]"
+      ],
+      "properties": {
+        "privateDnsZoneConfigs": [
+          { "name": "his-arc", "properties": { "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('arcZones')[0])]" } },
+          { "name": "guestconfiguration", "properties": { "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('arcZones')[1])]" } },
+          { "name": "kubernetesconfiguration", "properties": { "privateDnsZoneId": "[resourceId('Microsoft.Network/privateDnsZones', variables('arcZones')[2])]" } }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Network/dnsResolvers",
+      "apiVersion": "2022-07-01",
+      "name": "[variables('resolverName')]",
+      "location": "[parameters('location')]",
+      "condition": "[parameters('deployPrivateDnsResolver')]",
+      "properties": {
+        "virtualNetwork": { "id": "[parameters('workloadVirtualNetworkResourceId')]" }
+      }
+    },
+    {
+      "type": "Microsoft.Network/dnsResolvers/inboundEndpoints",
+      "apiVersion": "2022-07-01",
+      "name": "[format('{0}/inbound', variables('resolverName'))]",
+      "location": "[parameters('location')]",
+      "condition": "[parameters('deployPrivateDnsResolver')]",
+      "dependsOn": [ "[resourceId('Microsoft.Network/dnsResolvers', variables('resolverName'))]" ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "privateIpAllocationMethod": "Dynamic",
+            "subnet": { "id": "[parameters('resolverSubnetResourceId')]" }
+          }
+        ]
+      }
+    }
+  ],
+  "outputs": {
+    "privateLinkScopeResourceId": { "type": "string", "value": "[resourceId('Microsoft.HybridCompute/privateLinkScopes', variables('plsName'))]" },
+    "arcZones": { "type": "array", "value": "[variables('arcZones')]" }
+  }
+}

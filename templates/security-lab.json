@@ -1,0 +1,359 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "Microsoft Sentinel onboarding, AMA data collection rules + associations, and optional Content Hub / analytics-rule / UEBA enablement."
+  },
+  "parameters": {
+    "location": {
+      "type": "string"
+    },
+    "prefix": {
+      "type": "string"
+    },
+    "workspaceName": {
+      "type": "string"
+    },
+    "createWorkspace": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "retentionInDays": {
+      "type": "int",
+      "defaultValue": 90
+    },
+    "dailyQuotaGb": {
+      "type": "int",
+      "defaultValue": -1
+    },
+    "vmNames": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Windows VM names to associate with the Security Events DCR."
+      }
+    },
+    "linuxVmNames": {
+      "type": "array",
+      "defaultValue": [],
+      "metadata": {
+        "description": "Linux VM names to associate with the Syslog DCR."
+      }
+    },
+    "usePrivateIngestion": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Create a Data Collection Endpoint for private-link ingestion and bind the DCRs to it."
+      }
+    },
+    "deploySentinelContentScript": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Run the Content Hub / analytics-rule / UEBA enablement inline via a deploymentScript (needs ACI reachability). Default off \u2014 the GitHub Action / Cloud Shell path is preferred."
+      }
+    },
+    "deployUeba": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "enableXdrConnector": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "subscriptionId": {
+      "type": "string",
+      "defaultValue": "[subscription().subscriptionId]"
+    },
+    "resourceGroupName": {
+      "type": "string",
+      "defaultValue": "[resourceGroup().name]"
+    }
+  },
+  "variables": {
+    "enableContentScript": "<#\n.SYNOPSIS\n  Installs Microsoft Sentinel Content Hub solutions and bulk-enables the built-in analytics rule\n  templates for Entra ID, Azure Activity, Microsoft Defender XDR, Windows Security Events, Syslog and\n  Threat Intelligence, then turns on Entity Behavior Analytics (UEBA). Cloud-aware (Azure Government or\n  commercial). Idempotent.\n\n.DESCRIPTION\n  Runs either as an Azure deploymentScript (user-assigned managed identity with Microsoft Sentinel\n  Contributor on the workspace) or interactively in Cloud Shell. Uses the ARM REST API through the\n  current Az context token so it works in both AzureCloud and AzureUSGovernment.\n\n  Method (proven on the RoadRunner commercial lab, ~170 rules enabled):\n    1. GET contentProductPackages, install the requested solutions via PUT contentPackages/<id>\n       passing the entire package .properties object.\n    2. GET alertRuleTemplates, keep Scheduled/NRT templates whose requiredDataConnectors match the\n       target connector set, PUT alertRules/<new-guid> with enabled:true.\n    3. PUT settings/EntityAnalytics and settings/Ueba to enable UEBA over the chosen data sources.\n\n.NOTES\n  Rule templates that fail validation (a known handful reference preview tables/functions) are logged\n  and skipped; the script continues.\n#>\nparam (\n  [Parameter(Mandatory = $true)] [string]$SubscriptionId,\n  [Parameter(Mandatory = $true)] [string]$ResourceGroupName,\n  [Parameter(Mandatory = $true)] [string]$WorkspaceName,\n  [string[]]$Solutions = @(\n    'azure-sentinel-solution-azureactivedirectory',\n    'azure-sentinel-solution-azureactivity',\n    'azure-sentinel-solution-microsoftdefenderforendpoint',\n    'azure-sentinel-solution-microsoft365defender',\n    'azure-sentinel-solution-securityevents',\n    'azure-sentinel-solution-syslog',\n    'azure-sentinel-solution-threatintelligence-taxii',\n    'azure-sentinel-solution-uebaessentials'\n  ),\n  [string[]]$ConnectorIds = @(\n    'AzureActiveDirectory', 'AzureActivity', 'MicrosoftThreatProtection',\n    'MicrosoftDefenderAdvancedThreatProtection', 'SecurityEvents', 'WindowsSecurityEvents',\n    'Syslog', 'ThreatIntelligence', 'ThreatIntelligenceTaxii'\n  ),\n  [string[]]$UebaDataSources = @('AuditLogs', 'AzureActivity', 'SigninLogs', 'SecurityEvent'),\n  [switch]$EnableXdrConnector\n)\n\n$ErrorActionPreference = 'Stop'\nSet-StrictMode -Version Latest\n\n# --- Resolve ARM endpoint + token from the current Az context (cloud-aware) -----------------------\n$ctx = (Get-AzContext)\nif (-not $ctx) { Connect-AzAccount -Subscription $SubscriptionId | Out-Null; $ctx = Get-AzContext }\nSet-AzContext -Subscription $SubscriptionId | Out-Null\n$arm = $ctx.Environment.ResourceManagerUrl.TrimEnd('/')\n$token = (Get-AzAccessToken -ResourceUrl $ctx.Environment.ResourceManagerUrl).Token\n$headers = @{ Authorization = \"Bearer $token\"; 'Content-Type' = 'application/json' }\n$base = \"$arm/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.OperationalInsights/workspaces/$WorkspaceName/providers/Microsoft.SecurityInsights\"\n$apiContent = '2024-03-01'\n$apiRules = '2024-03-01'\n$apiSettings = '2023-12-01-preview'\n\nfunction Invoke-Arm {\n  param([string]$Method, [string]$Uri, $Body)\n  $json = if ($Body) { $Body | ConvertTo-Json -Depth 60 } else { $null }\n  for ($attempt = 1; $attempt -le 5; $attempt++) {\n    try { return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $headers -Body $json }\n    catch {\n      $code = $_.Exception.Response.StatusCode.value__\n      if ($code -eq 429 -or $code -ge 500) { Start-Sleep -Seconds (5 * $attempt); continue }\n      throw\n    }\n  }\n}\n\nWrite-Output \"ARM endpoint: $arm\"\nWrite-Output \"Workspace   : $WorkspaceName ($ResourceGroupName)\"\n\n# ================= 1. Install content hub solutions =================\nWrite-Output '--- Installing Content Hub solutions ---'\n$pkgUri = \"$base/contentProductPackages?api-version=$apiContent\"\n$packages = (Invoke-Arm GET $pkgUri).value\nWrite-Output \"Found $($packages.Count) content packages in the catalog.\"\n\nforeach ($want in $Solutions) {\n  $pkg = $packages | Where-Object { $_.properties.contentId -eq $want -or $_.name -eq $want } | Select-Object -First 1\n  if (-not $pkg) { Write-Warning \"Solution '$want' not found in catalog (skipping).\"; continue }\n  $installUri = \"$base/contentPackages/$($pkg.properties.contentId)?api-version=$apiContent\"\n  try {\n    Invoke-Arm PUT $installUri $pkg.properties | Out-Null\n    Write-Output \"Installed: $($pkg.properties.displayName) [$($pkg.properties.contentId)]\"\n  } catch { Write-Warning \"Install failed for $want : $($_.Exception.Message)\" }\n}\n\nStart-Sleep -Seconds 30   # let template records populate\n\n# ================= 2. Enable matching analytics rule templates =================\nWrite-Output '--- Enabling analytics rule templates ---'\n$tplUri = \"$base/alertRuleTemplates?api-version=$apiRules\"\n$templates = (Invoke-Arm GET $tplUri).value\nWrite-Output \"Catalog has $($templates.Count) alert rule templates.\"\n\n$wanted = $templates | Where-Object {\n  $_.kind -in @('Scheduled', 'NRT') -and\n  ($_.properties.requiredDataConnectors | Where-Object { $_.connectorId -in $ConnectorIds })\n}\n# De-dup on display name (several solutions ship the same template)\n$seen = @{}; $unique = @()\nforeach ($t in $wanted) { $dn = $t.properties.displayName; if (-not $seen.ContainsKey($dn)) { $seen[$dn] = $true; $unique += $t } }\nWrite-Output \"Matched $($unique.Count) unique Scheduled/NRT templates for connectors: $($ConnectorIds -join ', ')\"\n\n$enabled = 0; $failed = 0\nforeach ($t in $unique) {\n  $p = $t.properties\n  $guid = [guid]::NewGuid().ToString()\n  $ruleUri = \"$base/alertRules/$guid`?api-version=$apiRules\"\n  $body = [ordered]@{ kind = $t.kind; properties = [ordered]@{} }\n  # Carry forward the template's fields; strip nulls (ARM rejects explicit null on several props).\n  foreach ($prop in 'displayName', 'description', 'severity', 'query', 'queryFrequency', 'queryPeriod',\n    'triggerOperator', 'triggerThreshold', 'suppressionDuration', 'suppressionEnabled', 'tactics',\n    'techniques', 'entityMappings', 'eventGroupingSettings', 'alertDetailsOverride', 'customDetails',\n    'incidentConfiguration', 'alertRuleTemplateName', 'templateVersion', 'sentinelEntitiesMappings') {\n    if ($p.PSObject.Properties.Name -contains $prop -and $null -ne $p.$prop) { $body.properties[$prop] = $p.$prop }\n  }\n  if (-not $body.properties.Contains('alertRuleTemplateName')) { $body.properties['alertRuleTemplateName'] = $p.name }\n  if (-not $body.properties.Contains('templateVersion') -and ($p.PSObject.Properties.Name -contains 'version')) { $body.properties['templateVersion'] = $p.version }\n  if (-not $body.properties.Contains('suppressionDuration')) { $body.properties['suppressionDuration'] = 'PT1H' }\n  if (-not $body.properties.Contains('suppressionEnabled')) { $body.properties['suppressionEnabled'] = $false }\n  $body.properties['enabled'] = $true\n  try { Invoke-Arm PUT $ruleUri $body | Out-Null; $enabled++ }\n  catch { $failed++; Write-Warning \"Rule '$($p.displayName)' failed: $($_.Exception.Message)\" }\n}\nWrite-Output \"Analytics rules enabled: $enabled (failed/skipped: $failed)\"\n\n# ================= 3. Entity Behavior Analytics (UEBA) =================\nWrite-Output '--- Enabling Entity Behavior Analytics (UEBA) ---'\ntry {\n  $eaUri = \"$base/settings/EntityAnalytics?api-version=$apiSettings\"\n  Invoke-Arm PUT $eaUri @{ kind = 'EntityAnalytics'; properties = @{ entityProviders = @('AzureActiveDirectory') } } | Out-Null\n  $uebaUri = \"$base/settings/Ueba?api-version=$apiSettings\"\n  Invoke-Arm PUT $uebaUri @{ kind = 'Ueba'; properties = @{ dataSources = $UebaDataSources } } | Out-Null\n  Write-Output \"UEBA enabled over: $($UebaDataSources -join ', ')\"\n} catch { Write-Warning \"UEBA enablement: $($_.Exception.Message)\" }\n\n# ================= 4. Microsoft Defender XDR connector (optional) =================\nif ($EnableXdrConnector) {\n  Write-Output '--- Enabling Microsoft Defender XDR data connector ---'\n  try {\n    $tenantId = $ctx.Tenant.Id\n    $xdrUri = \"$base/dataConnectors/$([guid]::NewGuid())?api-version=$apiRules\"\n    $xdrBody = @{\n      kind = 'MicrosoftThreatProtection'\n      properties = @{\n        tenantId = $tenantId\n        dataTypes = @{\n          incidents = @{ state = 'Enabled' }\n          alerts = @{ state = 'Enabled' }\n          # XDR raw advanced-hunting event streaming\n        }\n      }\n    }\n    Invoke-Arm PUT $xdrUri $xdrBody | Out-Null\n    Write-Output 'Microsoft Defender XDR connector enabled (incidents + alerts).'\n  } catch { Write-Warning \"XDR connector (may require portal consent): $($_.Exception.Message)\" }\n}\n\nWrite-Output 'SENTINEL-CONTENT-STATUS: Success'\n",
+    "dceName": "[format('{0}-dce-sentinel', parameters('prefix'))]",
+    "winDcrName": "[format('{0}-dcr-windows-security', parameters('prefix'))]",
+    "linuxDcrName": "[format('{0}-dcr-linux-syslog', parameters('prefix'))]",
+    "uamiName": "[format('{0}-uami-sentinel-content', parameters('prefix'))]",
+    "workspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
+    "sentinelContributorRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ab8e14d6-4a74-4a29-9ba8-549422addade')]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[parameters('workspaceName')]",
+      "location": "[parameters('location')]",
+      "condition": "[parameters('createWorkspace')]",
+      "properties": {
+        "retentionInDays": "[parameters('retentionInDays')]",
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "workspaceCapping": {
+          "dailyQuotaGb": "[parameters('dailyQuotaGb')]"
+        },
+        "features": {
+          "enableLogAccessUsingOnlyResourcePermissions": true
+        }
+      }
+    },
+    {
+      "type": "Microsoft.SecurityInsights/onboardingStates",
+      "apiVersion": "2024-03-01",
+      "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('workspaceName'))]",
+      "name": "default",
+      "dependsOn": [
+        "[variables('workspaceResourceId')]"
+      ],
+      "properties": {
+        "customerManagedKey": false
+      }
+    },
+    {
+      "type": "Microsoft.OperationsManagement/solutions",
+      "apiVersion": "2015-11-01-preview",
+      "name": "[format('SecurityInsights({0})', parameters('workspaceName'))]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[variables('workspaceResourceId')]"
+      ],
+      "plan": {
+        "name": "[format('SecurityInsights({0})', parameters('workspaceName'))]",
+        "product": "OMSGallery/SecurityInsights",
+        "publisher": "Microsoft",
+        "promotionCode": ""
+      },
+      "properties": {
+        "workspaceResourceId": "[variables('workspaceResourceId')]"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionEndpoints",
+      "apiVersion": "2022-06-01",
+      "name": "[variables('dceName')]",
+      "location": "[parameters('location')]",
+      "condition": "[parameters('usePrivateIngestion')]",
+      "properties": {
+        "networkAcls": {
+          "publicNetworkAccess": "Disabled"
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2022-06-01",
+      "name": "[variables('winDcrName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[variables('workspaceResourceId')]",
+        "[if(parameters('usePrivateIngestion'), resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName')), variables('workspaceResourceId'))]"
+      ],
+      "kind": "Windows",
+      "properties": {
+        "dataCollectionEndpointId": "[if(parameters('usePrivateIngestion'), resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName')), null())]",
+        "dataSources": {
+          "windowsEventLogs": [
+            {
+              "name": "securityEventsAll",
+              "streams": [
+                "Microsoft-SecurityEvent"
+              ],
+              "xPathQueries": [
+                "Security!*",
+                "Microsoft-Windows-Sysmon/Operational!*",
+                "Microsoft-Windows-PowerShell/Operational!*",
+                "Windows PowerShell!*",
+                "System!*",
+                "Application!*"
+              ]
+            }
+          ]
+        },
+        "destinations": {
+          "logAnalytics": [
+            {
+              "name": "law",
+              "workspaceResourceId": "[variables('workspaceResourceId')]"
+            }
+          ]
+        },
+        "dataFlows": [
+          {
+            "streams": [
+              "Microsoft-SecurityEvent"
+            ],
+            "destinations": [
+              "law"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionRules",
+      "apiVersion": "2022-06-01",
+      "name": "[variables('linuxDcrName')]",
+      "location": "[parameters('location')]",
+      "condition": "[not(empty(parameters('linuxVmNames')))]",
+      "dependsOn": [
+        "[variables('workspaceResourceId')]",
+        "[if(parameters('usePrivateIngestion'), resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName')), variables('workspaceResourceId'))]"
+      ],
+      "kind": "Linux",
+      "properties": {
+        "dataCollectionEndpointId": "[if(parameters('usePrivateIngestion'), resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName')), null())]",
+        "dataSources": {
+          "syslog": [
+            {
+              "name": "syslogAll",
+              "streams": [
+                "Microsoft-Syslog"
+              ],
+              "facilityNames": [
+                "auth",
+                "authpriv",
+                "cron",
+                "daemon",
+                "kern",
+                "syslog",
+                "user",
+                "local0",
+                "local1",
+                "local2",
+                "local3",
+                "local4",
+                "local5",
+                "local6",
+                "local7"
+              ],
+              "logLevels": [
+                "Debug",
+                "Info",
+                "Notice",
+                "Warning",
+                "Error",
+                "Critical",
+                "Alert",
+                "Emergency"
+              ]
+            }
+          ]
+        },
+        "destinations": {
+          "logAnalytics": [
+            {
+              "name": "law",
+              "workspaceResourceId": "[variables('workspaceResourceId')]"
+            }
+          ]
+        },
+        "dataFlows": [
+          {
+            "streams": [
+              "Microsoft-Syslog"
+            ],
+            "destinations": [
+              "law"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionRuleAssociations",
+      "apiVersion": "2022-06-01",
+      "name": "[format('{0}/Microsoft.Insights/{1}-assoc', parameters('vmNames')[copyIndex()], variables('winDcrName'))]",
+      "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmNames')[copyIndex()])]",
+      "condition": "[not(empty(parameters('vmNames')))]",
+      "copy": {
+        "name": "winAssocLoop",
+        "count": "[length(parameters('vmNames'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/dataCollectionRules', variables('winDcrName'))]"
+      ],
+      "properties": {
+        "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('winDcrName'))]"
+      }
+    },
+    {
+      "type": "Microsoft.Insights/dataCollectionRuleAssociations",
+      "apiVersion": "2022-06-01",
+      "name": "[format('{0}/Microsoft.Insights/{1}-assoc', parameters('linuxVmNames')[copyIndex()], variables('linuxDcrName'))]",
+      "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('linuxVmNames')[copyIndex()])]",
+      "condition": "[not(empty(parameters('linuxVmNames')))]",
+      "copy": {
+        "name": "lnxAssocLoop",
+        "count": "[length(parameters('linuxVmNames'))]"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Insights/dataCollectionRules', variables('linuxDcrName'))]"
+      ],
+      "properties": {
+        "dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('linuxDcrName'))]"
+      }
+    },
+    {
+      "type": "Microsoft.ManagedIdentity/userAssignedIdentities",
+      "apiVersion": "2023-01-31",
+      "name": "[variables('uamiName')]",
+      "location": "[parameters('location')]",
+      "condition": "[parameters('deploySentinelContentScript')]"
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(variables('workspaceResourceId'), variables('uamiName'), variables('sentinelContributorRoleId'))]",
+      "condition": "[parameters('deploySentinelContentScript')]",
+      "scope": "[format('Microsoft.OperationalInsights/workspaces/{0}', parameters('workspaceName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('uamiName'))]",
+        "[variables('workspaceResourceId')]"
+      ],
+      "properties": {
+        "roleDefinitionId": "[variables('sentinelContributorRoleId')]",
+        "principalId": "[reference(resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('uamiName')), '2023-01-31').principalId]",
+        "principalType": "ServicePrincipal"
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deploymentScripts",
+      "apiVersion": "2023-08-01",
+      "name": "[format('{0}-enable-sentinel-content', parameters('prefix'))]",
+      "location": "[parameters('location')]",
+      "kind": "AzurePowerShell",
+      "condition": "[parameters('deploySentinelContentScript')]",
+      "identity": {
+        "type": "UserAssigned",
+        "userAssignedIdentities": {
+          "[resourceId('Microsoft.ManagedIdentity/userAssignedIdentities', variables('uamiName'))]": {}
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Authorization/roleAssignments', guid(variables('workspaceResourceId'), variables('uamiName'), variables('sentinelContributorRoleId')))]",
+        "[resourceId('Microsoft.SecurityInsights/onboardingStates', 'default')]"
+      ],
+      "properties": {
+        "azPowerShellVersion": "11.0",
+        "retentionInterval": "P1D",
+        "cleanupPreference": "OnSuccess",
+        "timeout": "PT1H",
+        "arguments": "[format('-SubscriptionId {0} -ResourceGroupName {1} -WorkspaceName {2} {3}', parameters('subscriptionId'), parameters('resourceGroupName'), parameters('workspaceName'), if(parameters('enableXdrConnector'), '-EnableXdrConnector', ''))]",
+        "scriptContent": "[variables('enableContentScript')]"
+      }
+    }
+  ],
+  "outputs": {
+    "workspaceResourceId": {
+      "type": "string",
+      "value": "[variables('workspaceResourceId')]"
+    },
+    "windowsDcrId": {
+      "type": "string",
+      "value": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('winDcrName'))]"
+    }
+  }
+}

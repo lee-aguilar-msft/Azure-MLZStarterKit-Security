@@ -1,0 +1,154 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "type": "string"
+    },
+    "namePrefix": {
+      "type": "string"
+    },
+    "sqlAdminUsername": {
+      "type": "string"
+    },
+    "sqlAdminPassword": {
+      "type": "secureString"
+    },
+    "customStorageAccountName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": { "description": "Optional. Override the auto-generated Storage account name (3-24 chars, lowercase alphanumeric)." }
+    },
+    "customAcrName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": { "description": "Optional. Override the auto-generated Container Registry name (5-50 chars, alphanumeric)." }
+    },
+    "customSqlServerName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": { "description": "Optional. Override the auto-generated SQL Server name (1-63 chars, lowercase letters, numbers, hyphens)." }
+    },
+    "customSqlDatabaseName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": { "description": "Optional. Override the SQL Database name. Defaults to 'defenderdb'." }
+    },
+    "customBlobContainerName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": { "description": "Optional. Override the Blob container name. Defaults to 'coverage-container'." }
+    }
+  },
+  "variables": {
+    "unique": "[toLower(uniqueString(subscription().subscriptionId, parameters('namePrefix')))]",
+    "storageAccountName": "[if(empty(parameters('customStorageAccountName')), take(concat('st', variables('unique')), 24), parameters('customStorageAccountName'))]",
+    "containerRegistryName": "[if(empty(parameters('customAcrName')), take(concat('acr', variables('unique')), 50), parameters('customAcrName'))]",
+    "sqlServerName": "[if(empty(parameters('customSqlServerName')), concat('sql-', variables('unique')), parameters('customSqlServerName'))]",
+    "sqlDatabaseName": "[if(empty(parameters('customSqlDatabaseName')), 'defenderdb', parameters('customSqlDatabaseName'))]",
+    "blobContainerName": "[if(empty(parameters('customBlobContainerName')), 'coverage-container', parameters('customBlobContainerName'))]"
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Storage/storageAccounts",
+      "apiVersion": "2023-05-01",
+      "name": "[variables('storageAccountName')]",
+      "location": "[parameters('location')]",
+      "sku": { "name": "Standard_LRS" },
+      "kind": "StorageV2",
+      "properties": {
+        "supportsHttpsTrafficOnly": true,
+        "minimumTlsVersion": "TLS1_2",
+        "allowBlobPublicAccess": false
+      }
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/default/{1}', variables('storageAccountName'), variables('blobContainerName'))]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+      ],
+      "properties": { "publicAccess": "None" }
+    },
+    {
+      "type": "Microsoft.ContainerRegistry/registries",
+      "apiVersion": "2023-07-01",
+      "name": "[variables('containerRegistryName')]",
+      "location": "[parameters('location')]",
+      "sku": { "name": "Basic" },
+      "properties": {
+        "adminUserEnabled": false,
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "type": "Microsoft.Sql/servers",
+      "apiVersion": "2022-05-01-preview",
+      "name": "[variables('sqlServerName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "administratorLogin": "[parameters('sqlAdminUsername')]",
+        "administratorLoginPassword": "[parameters('sqlAdminPassword')]",
+        "minimalTlsVersion": "1.2",
+        "publicNetworkAccess": "Enabled"
+      }
+    },
+    {
+      "type": "Microsoft.Sql/servers/databases",
+      "apiVersion": "2022-05-01-preview",
+      "name": "[format('{0}/{1}', variables('sqlServerName'), variables('sqlDatabaseName'))]",
+      "location": "[parameters('location')]",
+      "sku": { "name": "Basic", "tier": "Basic" },
+      "dependsOn": [
+        "[resourceId('Microsoft.Sql/servers', variables('sqlServerName'))]"
+      ],
+      "properties": {
+        "collation": "SQL_Latin1_General_CP1_CI_AS",
+        "maxSizeBytes": 2147483648,
+        "sampleName": "AdventureWorksLT"
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "cspm-rm-sample",
+      "properties": {
+        "mode": "Incremental",
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "resources": [],
+          "outputs": {
+            "resourceManagerCoverage": {
+              "type": "string",
+              "value": "Resource Manager sample deployment created."
+            }
+          }
+        }
+      }
+    }
+  ],
+  "outputs": {
+    "storageAccountName": {
+      "type": "string",
+      "value": "[variables('storageAccountName')]"
+    },
+    "blobContainerName": {
+      "type": "string",
+      "value": "[variables('blobContainerName')]"
+    },
+    "containerRegistryName": {
+      "type": "string",
+      "value": "[variables('containerRegistryName')]"
+    },
+    "sqlServerName": {
+      "type": "string",
+      "value": "[variables('sqlServerName')]"
+    },
+    "sqlDatabaseName": {
+      "type": "string",
+      "value": "[variables('sqlDatabaseName')]"
+    }
+  }
+}
