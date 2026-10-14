@@ -46,7 +46,6 @@ lp["deployMde"] = val("[parameters('deployDefenderForServers')]")
 
 # ---- replace the Sentinel inline deployment with the security-lab module ----
 tier3rg = "[format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('tier3ResourceGroupName'))]"
-labvm_ref = "reference(resourceId(subscription().subscriptionId, variables('tier3ResourceGroupName'), 'Microsoft.Resources/deployments', variables('labVmDeploymentName')), '2025-04-01')"
 security_lab = collections.OrderedDict([
     ("condition", "[parameters('deploySentinel')]"),
     ("type", "Microsoft.Resources/deployments"),
@@ -55,7 +54,7 @@ security_lab = collections.OrderedDict([
     ("resourceGroup", "[variables('tier3ResourceGroupName')]"),
     ("dependsOn", [
         "[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]",
-        "[resourceId('Microsoft.Resources/deployments', variables('labVmDeploymentName'))]",
+        "[variables('labVmDeploymentName')]",
     ]),
     ("properties", collections.OrderedDict([
         ("expressionEvaluationOptions", {"scope": "inner"}),
@@ -67,8 +66,7 @@ security_lab = collections.OrderedDict([
             ("workspaceName", val("[variables('labWorkspaceName')]")),
             ("createWorkspace", val("[empty(parameters('existingWorkspaceResourceId'))]")),
             ("retentionInDays", val(90)),
-            ("vmNames", val("[" + labvm_ref + ".outputs.windowsVmNames.value]")),
-            ("linuxVmNames", val("[" + labvm_ref + ".outputs.linuxVmNames.value]")),
+            ("deployLinuxVms", val("[parameters('deployLinuxVms')]")),
             ("usePrivateIngestion", val("[parameters('usePrivateIngestion')]")),
             ("deploySentinelContentScript", val("[and(parameters('deploySentinelContentScript'), parameters('enableSentinelAnalytics'))]")),
             ("deployUeba", val("[parameters('enableSentinelAnalytics')]")),

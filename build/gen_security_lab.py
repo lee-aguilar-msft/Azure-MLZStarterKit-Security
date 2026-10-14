@@ -26,8 +26,9 @@ t = {
         "createWorkspace": {"type": "bool", "defaultValue": True},
         "retentionInDays": {"type": "int", "defaultValue": 90},
         "dailyQuotaGb": {"type": "int", "defaultValue": -1},
-        "vmNames": {"type": "array", "defaultValue": [], "metadata": {"description": "Windows VM names to associate with the Security Events DCR."}},
-        "linuxVmNames": {"type": "array", "defaultValue": [], "metadata": {"description": "Linux VM names to associate with the Syslog DCR."}},
+        "vmNames": {"type": "array", "defaultValue": [], "metadata": {"description": "Windows VM names to associate with the Security Events DCR. Empty = derive the six kit names from prefix."}},
+        "linuxVmNames": {"type": "array", "defaultValue": [], "metadata": {"description": "Linux VM names to associate with the Syslog DCR. Empty = derive the three kit names from prefix when deployLinuxVms is true."}},
+        "deployLinuxVms": {"type": "bool", "defaultValue": True},
         "usePrivateIngestion": {"type": "bool", "defaultValue": False, "metadata": {"description": "Create a Data Collection Endpoint for private-link ingestion and bind the DCRs to it."}},
         "deploySentinelContentScript": {"type": "bool", "defaultValue": False, "metadata": {"description": "Run the Content Hub / analytics-rule / UEBA enablement inline via a deploymentScript (needs ACI reachability). Default off — the GitHub Action / Cloud Shell path is preferred."}},
         "deployUeba": {"type": "bool", "defaultValue": True},
@@ -42,6 +43,8 @@ t = {
         "linuxDcrName": "[format('{0}-dcr-linux-syslog', parameters('prefix'))]",
         "uamiName": "[format('{0}-uami-sentinel-content', parameters('prefix'))]",
         "workspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('workspaceName'))]",
+        "winNames": "[if(empty(parameters('vmNames')), createArray(format('{0}-dc01', parameters('prefix')), format('{0}-ms01', parameters('prefix')), format('{0}-ms02', parameters('prefix')), format('{0}-cl01', parameters('prefix')), format('{0}-cl02', parameters('prefix')), format('{0}-cl03', parameters('prefix'))), parameters('vmNames'))]",
+        "lnxNames": "[if(empty(parameters('linuxVmNames')), if(parameters('deployLinuxVms'), createArray(format('{0}-rhel01', parameters('prefix')), format('{0}-ubu01', parameters('prefix')), format('{0}-sles01', parameters('prefix'))), createArray()), parameters('linuxVmNames'))]",
         # Microsoft Sentinel Contributor
         "sentinelContributorRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ab8e14d6-4a74-4a29-9ba8-549422addade')]",
     },
@@ -141,10 +144,9 @@ R.append({
 # --- DCR associations (Windows) ---
 R.append({
     "type": "Microsoft.Insights/dataCollectionRuleAssociations", "apiVersion": "2022-06-01",
-    "name": "[format('{0}/Microsoft.Insights/{1}-assoc', parameters('vmNames')[copyIndex()], variables('winDcrName'))]",
-    "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('vmNames')[copyIndex()])]",
-    "condition": "[not(empty(parameters('vmNames')))]",
-    "copy": {"name": "winAssocLoop", "count": "[length(parameters('vmNames'))]"},
+    "name": "[format('{0}/Microsoft.Insights/{1}-assoc', variables('winNames')[copyIndex()], variables('winDcrName'))]",
+    "scope": "[format('Microsoft.Compute/virtualMachines/{0}', variables('winNames')[copyIndex()])]",
+    "copy": {"name": "winAssocLoop", "count": "[length(variables('winNames'))]"},
     "dependsOn": ["[resourceId('Microsoft.Insights/dataCollectionRules', variables('winDcrName'))]"],
     "properties": {"dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('winDcrName'))]"},
 })
@@ -152,10 +154,10 @@ R.append({
 # --- DCR associations (Linux) ---
 R.append({
     "type": "Microsoft.Insights/dataCollectionRuleAssociations", "apiVersion": "2022-06-01",
-    "name": "[format('{0}/Microsoft.Insights/{1}-assoc', parameters('linuxVmNames')[copyIndex()], variables('linuxDcrName'))]",
-    "scope": "[format('Microsoft.Compute/virtualMachines/{0}', parameters('linuxVmNames')[copyIndex()])]",
-    "condition": "[not(empty(parameters('linuxVmNames')))]",
-    "copy": {"name": "lnxAssocLoop", "count": "[length(parameters('linuxVmNames'))]"},
+    "name": "[format('{0}/Microsoft.Insights/{1}-assoc', variables('lnxNames')[copyIndex()], variables('linuxDcrName'))]",
+    "scope": "[format('Microsoft.Compute/virtualMachines/{0}', variables('lnxNames')[copyIndex()])]",
+    "condition": "[not(empty(variables('lnxNames')))]",
+    "copy": {"name": "lnxAssocLoop", "count": "[max(1, length(variables('lnxNames')))]"},
     "dependsOn": ["[resourceId('Microsoft.Insights/dataCollectionRules', variables('linuxDcrName'))]"],
     "properties": {"dataCollectionRuleId": "[resourceId('Microsoft.Insights/dataCollectionRules', variables('linuxDcrName'))]"},
 })
