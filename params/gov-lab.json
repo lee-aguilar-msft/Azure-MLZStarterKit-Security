@@ -113,9 +113,6 @@
     "deployPolicy": {
       "value": true
     },
-    "deployIl5": {
-      "value": true
-    },
     "deployActivityLogDiagnosticSetting": {
       "value": true
     },
@@ -175,6 +172,12 @@
     },
     "deployDefenderForArm": {
       "value": true
+    },
+    "deployFedRampHigh": {
+      "value": true
+    },
+    "defenderForApisSubPlan": {
+      "value": "P1"
     }
   }
 }
