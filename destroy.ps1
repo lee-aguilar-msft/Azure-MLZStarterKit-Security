@@ -110,7 +110,7 @@ $rgPrefix = "$idLower-$EnvironmentAbbreviation-$locAbbr-"
 # ---------------------------------------------------------------------------
 $defenderPlans = @(
     "CloudPosture", "VirtualMachines", "StorageAccounts", "SqlServerVirtualMachines",
-    "Containers", "AppServices", "KeyVaults", "Arm", "Dns",
+    "Containers", "AppServices", "KeyVaults", "Arm",
     "OpenSourceRelationalDatabases", "CosmosDbs", "Api"
 )
 
@@ -120,7 +120,8 @@ $defenderPlans = @(
 $policyAssignments = @(
     "assign-nist-800-53",
     "assign-nist-800-171",
-    "assign-dod-il5"
+    "assign-fedramp-high",
+    "assign-dod-il5"   # legacy name from kits built before the DoD IL5 initiative was retired
 )
 
 # ---------------------------------------------------------------------------

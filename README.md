@@ -222,5 +222,11 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lee-aguilar-msft/Azure
 - The CSPM API Management sample defaults to the **Developer** SKU (works in Azure Government; ~30–45 min
   to provision, ~$50/mo). Set `cspmApimSku` to `BasicV2`/`StandardV2` for minutes-fast provisioning where
   those tiers are available, or `deployCspmApiManagement = false` to skip it.
+- **Defender for DNS** is no longer offered as a standalone plan (Microsoft retired it; DNS threat detection
+  now ships inside Defender for Servers / CSPM), so the kit does not enable it. **Defender for APIs**
+  needs an explicit sub-plan — the kit sets `defenderForApisSubPlan = P1` (up to 1M calls/month).
+- The standalone **DoD IL5** regulatory initiative has been retired by Microsoft. The kit assigns
+  **FedRAMP High** (`deployFedRampHigh`) instead, which is the Azure Government control baseline for
+  IL5 workloads; NIST 800-53 R5 / 800-171 R2 remain available as separate toggles.
 - The Arc Private Link Scope uses a preview API version; keep `deployArcPrivateLink = false` if your
   subscription/region doesn't expose it yet.

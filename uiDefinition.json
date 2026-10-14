@@ -296,13 +296,6 @@
               "defaultValue": false
             },
             {
-              "name": "deployDefenderForDns",
-              "type": "Microsoft.Common.CheckBox",
-              "label": "Defender for DNS",
-              "toolTip": "Detects DNS-based threats: data exfiltration via DNS tunneling, C2 beaconing, and malicious domain resolution from Azure resources.",
-              "defaultValue": false
-            },
-            {
               "name": "deployDefenderForOssDb",
               "type": "Microsoft.Common.CheckBox",
               "label": "Defender for Open-Source Relational Databases",
@@ -320,7 +313,7 @@
               "name": "deployDefenderForApis",
               "type": "Microsoft.Common.CheckBox",
               "label": "Defender for APIs",
-              "toolTip": "API security posture and runtime threat protection for APIs published through Azure API Management (APIM).",
+              "toolTip": "API security posture and runtime threat protection for APIs published through Azure API Management (APIM). Enabled on the P1 plan (up to 1M API calls/month).",
               "defaultValue": false
             },
             {
@@ -336,7 +329,7 @@
               "type": "Microsoft.Common.InfoBox",
               "options": {
                 "style": "Info",
-                "text": "All initiatives are assigned in DoNotEnforce (audit-only) mode \u2014 they surface compliance gaps in the Defender for Cloud dashboard without blocking deployments. NIST 800-53 and IL5 are required for FedRAMP and DoD authorization packages."
+                "text": "All initiatives are assigned in DoNotEnforce (audit-only) mode \u2014 they surface compliance gaps in the Defender for Cloud dashboard without blocking deployments. NIST 800-53 and FedRAMP High are the baselines for FedRAMP and DoD IL5 authorization packages (the standalone DoD IL5 initiative was retired by Microsoft)."
               }
             },
             {
@@ -361,10 +354,10 @@
               "defaultValue": false
             },
             {
-              "name": "deployIl5",
+              "name": "deployFedRampHigh",
               "type": "Microsoft.Common.CheckBox",
-              "label": "DoD Impact Level 5 (IL5) \u2014 Azure Government only",
-              "toolTip": "Assigns the DoD IL5 regulatory compliance initiative for National Security Systems and CUI up to SECRET. Only applicable in Azure Government regions.",
+              "label": "FedRAMP High (DoD IL5 baseline \u2014 Azure Government)",
+              "toolTip": "Assigns the built-in FedRAMP High regulatory-compliance initiative (audit-only). In Azure Government this is the control baseline used for DoD IL5 workloads; the former standalone DoD IL5 initiative no longer exists.",
               "defaultValue": false
             },
             {
@@ -945,14 +938,14 @@
         "deployDefenderForAppService": "[steps('securityCompliance').deployDefenderForAppService]",
         "deployDefenderForKeyVault": "[steps('securityCompliance').deployDefenderForKeyVault]",
         "deployDefenderForArm": "[steps('securityCompliance').deployDefenderForArm]",
-        "deployDefenderForDns": "[steps('securityCompliance').deployDefenderForDns]",
         "deployDefenderForOssDb": "[steps('securityCompliance').deployDefenderForOssDb]",
         "deployDefenderForCosmosDb": "[steps('securityCompliance').deployDefenderForCosmosDb]",
         "deployDefenderForApis": "[steps('securityCompliance').deployDefenderForApis]",
+        "defenderForApisSubPlan": "P1",
         "deployPolicy": "[steps('securityCompliance').deployPolicy]",
         "deployNist80053": "[steps('securityCompliance').deployNist80053]",
         "deployNist800171": "[steps('securityCompliance').deployNist800171]",
-        "deployIl5": "[steps('securityCompliance').deployIl5]",
+        "deployFedRampHigh": "[steps('securityCompliance').deployFedRampHigh]",
         "deploySentinel": "[steps('securityCompliance').deploySentinel]",
         "emailSecurityContact": "[steps('securityCompliance').emailSecurityContact]",
         "virtualNetworkAddressPrefix": "[steps('networking').virtualNetworkAddressPrefix]",

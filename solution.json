@@ -86,10 +86,6 @@
       "type": "bool",
       "defaultValue": false
     },
-    "deployDefenderForDns": {
-      "type": "bool",
-      "defaultValue": false
-    },
     "deployDefenderForOssDb": {
       "type": "bool",
       "defaultValue": false
@@ -101,6 +97,20 @@
     "deployDefenderForApis": {
       "type": "bool",
       "defaultValue": false
+    },
+    "defenderForApisSubPlan": {
+      "type": "string",
+      "defaultValue": "P1",
+      "allowedValues": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P5"
+      ],
+      "metadata": {
+        "description": "Defender for APIs pricing plan (P1 = up to 1M API calls/month; required by the Microsoft.Security/pricings 'Api' resource)."
+      }
     },
     "deployPolicy": {
       "type": "bool",
@@ -114,9 +124,12 @@
       "type": "bool",
       "defaultValue": false
     },
-    "deployIl5": {
+    "deployFedRampHigh": {
       "type": "bool",
-      "defaultValue": false
+      "defaultValue": false,
+      "metadata": {
+        "description": "Assign the FedRAMP High regulatory-compliance initiative (audit-only). This is the Azure Government baseline for DoD IL5 workloads now that the standalone DoD IL5 initiative has been retired."
+      }
     },
     "deploySentinel": {
       "type": "bool",
@@ -1554,15 +1567,6 @@
       }
     },
     {
-      "condition": "[parameters('deployDefenderForDns')]",
-      "type": "Microsoft.Security/pricings",
-      "apiVersion": "2024-01-01",
-      "name": "Dns",
-      "properties": {
-        "pricingTier": "Standard"
-      }
-    },
-    {
       "condition": "[parameters('deployDefenderForOssDb')]",
       "type": "Microsoft.Security/pricings",
       "apiVersion": "2024-01-01",
@@ -1586,7 +1590,8 @@
       "apiVersion": "2024-01-01",
       "name": "Api",
       "properties": {
-        "pricingTier": "Standard"
+        "pricingTier": "Standard",
+        "subPlan": "[parameters('defenderForApisSubPlan')]"
       }
     },
     {
@@ -1628,17 +1633,17 @@
       }
     },
     {
-      "condition": "[parameters('deployIl5')]",
+      "condition": "[parameters('deployFedRampHigh')]",
       "type": "Microsoft.Authorization/policyAssignments",
       "apiVersion": "2022-06-01",
-      "name": "assign-dod-il5",
+      "name": "assign-fedramp-high",
       "location": "[parameters('location')]",
       "identity": {
         "type": "SystemAssigned"
       },
       "properties": {
-        "displayName": "DoD Impact Level 5",
-        "policyDefinitionId": "/providers/Microsoft.Authorization/policySetDefinitions/f9a961fa-3241-4b20-adc4-6b8e936e3a43",
+        "displayName": "FedRAMP High",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policySetDefinitions/d5264498-16f4-418a-b659-fa7ef418175f",
         "enforcementMode": "DoNotEnforce"
       }
     },
