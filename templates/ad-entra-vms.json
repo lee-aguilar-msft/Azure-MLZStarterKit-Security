@@ -2,7 +2,7 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
   "contentVersion": "1.0.0.0",
   "metadata": {
-    "description": "AD forest + Entra lab: DCs, member servers, Windows clients, Linux servers, Entra login, AMA, MDE, auto-shutdown."
+    "description": "AD forest + Entra lab: DCs, member servers, Windows clients, Linux servers, Entra login, AMA, auto-shutdown (MDE via Defender for Servers auto-provisioning)."
   },
   "parameters": {
     "location": {
@@ -95,7 +95,7 @@
       "type": "secureString",
       "defaultValue": "",
       "metadata": {
-        "description": "Raw MDE onboarding JSON (from the GCC High / commercial onboarding package). Applied to clients via run-command and to all machines via a startup-script GPO. Empty = rely on the MDE.Windows/MDE.Linux extension instead."
+        "description": "Raw MDE onboarding JSON (from the GCC High / commercial onboarding package). Applied to clients via run-command and to all machines via a startup-script GPO. Empty = rely on Defender for Servers auto-provisioning of MDE instead."
       }
     },
     "entraLoginPrincipalId": {
@@ -121,13 +121,6 @@
     "assignVmUserRole": {
       "type": "bool",
       "defaultValue": false
-    },
-    "deployMde": {
-      "type": "bool",
-      "defaultValue": false,
-      "metadata": {
-        "description": "Install the MDE.Windows/MDE.Linux Defender for Servers extension on the servers."
-      }
     },
     "deployLinuxVms": {
       "type": "bool",
@@ -313,7 +306,9 @@
       "location": "[parameters('location')]",
       "copy": {
         "name": "winNicLoop",
-        "count": "[length(variables('windowsVms'))]"
+        "count": "[length(variables('windowsVms'))]",
+        "mode": "serial",
+        "batchSize": 1
       },
       "properties": {
         "ipConfigurations": [
@@ -636,30 +631,6 @@
       }
     },
     {
-      "type": "Microsoft.Compute/virtualMachines/extensions",
-      "apiVersion": "2023-09-01",
-      "name": "[format('{0}/MDE.Windows', variables('windowsVms')[copyIndex()].name)]",
-      "location": "[parameters('location')]",
-      "condition": "[and(parameters('deployMde'), variables('windowsVms')[copyIndex()].isServer)]",
-      "copy": {
-        "name": "mdeWinLoop",
-        "count": "[length(variables('windowsVms'))]"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Compute/virtualMachines/extensions', variables('windowsVms')[copyIndex()].name, 'AzureMonitorWindowsAgent')]"
-      ],
-      "properties": {
-        "publisher": "Microsoft.Azure.AzureDefenderForServers",
-        "type": "MDE.Windows",
-        "typeHandlerVersion": "1.0",
-        "autoUpgradeMinorVersion": true,
-        "settings": {
-          "forceReOnboarding": false,
-          "provisioningMode": "Auto"
-        }
-      }
-    },
-    {
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
       "name": "[guid(resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[copyIndex()].name), variables('vmAdminRoleId'), parameters('entraLoginPrincipalId'))]",
@@ -734,6 +705,9 @@
         "name": "lnxNicLoop",
         "count": "[length(variables('linuxVms'))]"
       },
+      "dependsOn": [
+        "winNicLoop"
+      ],
       "properties": {
         "ipConfigurations": [
           {
@@ -886,30 +860,6 @@
             "value": "[parameters('hydrationIntervalMinutes')]"
           }
         ]
-      }
-    },
-    {
-      "type": "Microsoft.Compute/virtualMachines/extensions",
-      "apiVersion": "2023-09-01",
-      "name": "[format('{0}/MDE.Linux', variables('linuxVms')[copyIndex()].name)]",
-      "location": "[parameters('location')]",
-      "condition": "[and(parameters('deployLinuxVms'), parameters('deployMde'))]",
-      "copy": {
-        "name": "mdeLnxLoop",
-        "count": "[length(variables('linuxVms'))]"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Compute/virtualMachines/extensions', variables('linuxVms')[copyIndex()].name, 'AzureMonitorLinuxAgent')]"
-      ],
-      "properties": {
-        "publisher": "Microsoft.Azure.AzureDefenderForServers",
-        "type": "MDE.Linux",
-        "typeHandlerVersion": "1.0",
-        "autoUpgradeMinorVersion": true,
-        "settings": {
-          "forceReOnboarding": false,
-          "provisioningMode": "Auto"
-        }
       }
     },
     {
