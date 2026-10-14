@@ -1,0 +1,116 @@
+name: Rebuild Security Lab (90-day)
+
+# Rebuilds the full security lab on a 90-day cadence and on demand. Uses Microsoft Entra
+# federated credentials (OIDC) — no stored secrets. Destroys the previous build, redeploys the
+# solution, then runs the post-deploy automation (Sentinel content/analytics/UEBA + hybrid-join cycle).
+#
+# Required repository configuration:
+#   Secrets:   none for auth (OIDC). Set LAB_ADMIN_PASSWORD and LAB_SAFEMODE_PASSWORD (secureString
+#              inputs for the deployment); optionally MDE_ONBOARDING_BLOB.
+#   Variables: AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_ENVIRONMENT
+#              (AzureUSGovernment or AzureCloud), LAB_LOCATION, LAB_IDENTIFIER, LAB_PREFIX,
+#              LAB_WORKLOAD_NAME, LAB_WORKLOAD_SHORT, LAB_DOMAIN_NAME, LAB_DOMAIN_NETBIOS,
+#              LAB_ENTRA_PRINCIPAL_ID, LAB_UPN_SUFFIX, LAB_CLOUD_SUFFIX (us|com).
+# The federated credential subject must match this repo + the 'lab' environment.
+
+on:
+  schedule:
+    - cron: "17 7 */90 * *"   # every ~90 days, 07:17 UTC (jittered off the hour)
+  workflow_dispatch:
+    inputs:
+      skipDestroy:
+        description: "Skip the teardown step (deploy on top of the existing lab)"
+        type: boolean
+        default: false
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: rebuild-security-lab
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    environment: lab
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+          environment: ${{ vars.AZURE_ENVIRONMENT }}
+          enable-AzPSSession: true
+
+      - name: Teardown previous lab
+        if: ${{ inputs.skipDestroy != true }}
+        shell: pwsh
+        run: |
+          az cloud set --name ${{ vars.AZURE_ENVIRONMENT }}
+          ./destroy.ps1 `
+            -SubscriptionId "${{ vars.AZURE_SUBSCRIPTION_ID }}" `
+            -Identifier "${{ vars.LAB_IDENTIFIER }}" `
+            -EnvironmentAbbreviation "dev" `
+            -Location "${{ vars.LAB_LOCATION }}" `
+            -RemoveDefenderPlans -RemovePolicyAssignments -Force
+          Write-Host "Teardown complete; waiting 120s for resource group deletion to settle."
+          Start-Sleep -Seconds 120
+
+      - name: Deploy solution
+        shell: pwsh
+        env:
+          ADMIN_PW: ${{ secrets.LAB_ADMIN_PASSWORD }}
+          SAFEMODE_PW: ${{ secrets.LAB_SAFEMODE_PASSWORD }}
+          MDE_BLOB: ${{ secrets.MDE_ONBOARDING_BLOB }}
+        run: |
+          az cloud set --name ${{ vars.AZURE_ENVIRONMENT }}
+          $suffix = Get-Date -Format "yyyyMMddHHmm"
+          az deployment sub create `
+            --name "rebuild-$suffix" `
+            --location "${{ vars.LAB_LOCATION }}" `
+            --template-file ./solution.json `
+            --parameters `
+              location="${{ vars.LAB_LOCATION }}" `
+              identifier="${{ vars.LAB_IDENTIFIER }}" `
+              environmentAbbreviation="dev" `
+              workloadName="${{ vars.LAB_WORKLOAD_NAME }}" `
+              workloadShortName="${{ vars.LAB_WORKLOAD_SHORT }}" `
+              prefix="${{ vars.LAB_PREFIX }}" `
+              adminUsername="labadmin" `
+              adminPassword="$env:ADMIN_PW" `
+              safeModeAdminPassword="$env:SAFEMODE_PW" `
+              domainName="${{ vars.LAB_DOMAIN_NAME }}" `
+              domainNetbiosName="${{ vars.LAB_DOMAIN_NETBIOS }}" `
+              upnSuffix="${{ vars.LAB_UPN_SUFFIX }}" `
+              cloudSuffix="${{ vars.LAB_CLOUD_SUFFIX }}" `
+              entraLoginPrincipalId="${{ vars.LAB_ENTRA_PRINCIPAL_ID }}" `
+              mdeOnboardingBlob="$env:MDE_BLOB" `
+              deploySentinel=true `
+              deployDefender=true `
+              deployDefenderForServers=true `
+              deployLinuxVms=true `
+              deployArcPrivateLink=true `
+              deployFirewallRules=true
+
+      - name: Post-deploy automation (Sentinel content + analytics + UEBA)
+        shell: pwsh
+        run: |
+          $rg = "{0}-dev-{1}-{2}-rg-network" -f "${{ vars.LAB_IDENTIFIER }}".ToLower(), "<locAbbr>", "${{ vars.LAB_WORKLOAD_NAME }}"
+          # Resolve the tier3 RG + workspace from the deployment outputs instead of guessing:
+          $ws = "${{ vars.LAB_PREFIX }}-law-lab"
+          $rgReal = az group list --query "[?starts_with(name, '${{ vars.LAB_IDENTIFIER }}-dev-') && contains(name, 'network')].name | [0]" -o tsv
+          Write-Host "Workspace RG: $rgReal  Workspace: $ws"
+          ./templates/scripts/Enable-SentinelContent.ps1 `
+            -SubscriptionId "${{ vars.AZURE_SUBSCRIPTION_ID }}" `
+            -ResourceGroupName "$rgReal" `
+            -WorkspaceName "$ws" `
+            -EnableXdrConnector
+
+      - name: Summary
+        if: always()
+        run: echo "Rebuild run complete. Hybrid join / Entra Connect configuration is interactive (MFA) — see docs/RUNBOOK.md."
