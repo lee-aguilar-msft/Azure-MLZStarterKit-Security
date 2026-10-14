@@ -42,7 +42,11 @@ V["entraFqdnsGov"] = ["login.microsoftonline.us", "device.login.microsoftonline.
     "autologon.microsoftazuread-sso.com", "*.wns.windows.com", "login.live.com"]
 V["entraFqdnsCom"] = ["login.microsoftonline.com", "device.login.microsoftonline.com", "enterpriseregistration.windows.net",
     "autologon.microsoftazuread-sso.com", "login.live.com"]
-V["linuxRepoFqdns"] = ["packages.microsoft.com", "security.ubuntu.com", "archive.ubuntu.com", "*.archive.ubuntu.com",
+V["linuxRepoFqdns"] = ["packages.microsoft.com",
+    # Azure RHUI (RHEL PAYG images pull everything from here; blocked = AADSSHLoginForLinux install fails)
+    "rhui-1.microsoft.com", "rhui-2.microsoft.com", "rhui-3.microsoft.com", "rhui-4.microsoft.com",
+    "rhui4-1.microsoft.com", "rhui4-2.microsoft.com", "rhui4-3.microsoft.com",
+    "security.ubuntu.com", "archive.ubuntu.com", "*.archive.ubuntu.com",
     "azure.archive.ubuntu.com", "changelogs.ubuntu.com", "cdn.redhat.com", "*.cdn.redhat.com", "subscription.rhsm.redhat.com",
     "*.akamaiedge.net", "*.akamaitechnologies.com", "scc.suse.com", "*.susecloud.net", "updates.suse.com"]
 V["pkiFqdns"] = ["crl.microsoft.com", "*.crl.microsoft.com", "www.microsoft.com", "ctldl.windowsupdate.com",

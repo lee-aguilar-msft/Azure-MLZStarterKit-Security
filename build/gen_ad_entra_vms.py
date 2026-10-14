@@ -32,6 +32,7 @@ baseline_ps1 = rd("Configure-ForestBaseline.ps1")
 join_ps1 = rd("Join-Domain.ps1")
 configure_ps1 = rd("Configure-WindowsMember.ps1")
 configure_linux_sh = rd("configure-linux.sh")
+prep_linux_sh = rd("prep-linux.sh")
 hydrate_win_b64 = b64("Invoke-LabHydration.ps1")
 hydrate_linux_b64 = b64("hydrate-linux.sh")
 
@@ -85,6 +86,7 @@ tmpl = {
         "joinScript": join_ps1,
         "configureScript": configure_ps1,
         "configureLinuxScript": configure_linux_sh,
+        "prepLinuxScript": prep_linux_sh,
         "hydrateWinB64": hydrate_win_b64,
         "hydrateLinuxB64": hydrate_linux_b64,
         "vmAdminRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1c0163c0-47e6-4577-8991-ea5c82e286e4')]",
@@ -365,13 +367,28 @@ R.append({
 # SLES/RHEL/Ubuntu images that are marketplace "plan" images need a plan block; add it conditionally is
 # hard per-image in one copy, so document that SLES BYOS/PAYG plan may be required. The listed SKUs are
 # PAYG images that do not require a plan block.
+# first-boot settle + repo metadata refresh, so the extension installers below never race the package lock
+R.append({
+    "type": "Microsoft.Compute/virtualMachines/runCommands", "apiVersion": "2023-09-01",
+    "name": "[format('{0}/prep-linux', variables('linuxVms')[copyIndex()].name)]",
+    "location": "[parameters('location')]",
+    "condition": "[parameters('deployLinuxVms')]",
+    "copy": {"name": "lnxPrepLoop", "count": "[length(variables('linuxVms'))]"},
+    "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines', variables('linuxVms')[copyIndex()].name)]"],
+    "properties": {
+        "asyncExecution": False,
+        "treatFailureAsDeploymentFailure": False,
+        "timeoutInSeconds": 1500,
+        "source": {"script": "[variables('prepLinuxScript')]"},
+    },
+})
 R.append({
     "type": "Microsoft.Compute/virtualMachines/extensions", "apiVersion": "2023-09-01",
     "name": "[format('{0}/AADSSHLoginForLinux', variables('linuxVms')[copyIndex()].name)]",
     "location": "[parameters('location')]",
     "condition": "[parameters('deployLinuxVms')]",
     "copy": {"name": "aadLnxLoop", "count": "[length(variables('linuxVms'))]"},
-    "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines', variables('linuxVms')[copyIndex()].name)]"],
+    "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines/runCommands', variables('linuxVms')[copyIndex()].name, 'prep-linux')]"],
     "properties": {"publisher": "Microsoft.Azure.ActiveDirectory", "type": "AADSSHLoginForLinux", "typeHandlerVersion": "1.0", "autoUpgradeMinorVersion": True},
 })
 R.append({
