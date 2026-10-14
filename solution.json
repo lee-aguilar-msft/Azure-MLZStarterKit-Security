@@ -1379,9 +1379,6 @@
           "clientImageVersion": {
             "value": "[parameters('clientImageVersion')]"
           },
-          "deployMde": {
-            "value": "[parameters('deployDefenderForServers')]"
-          },
           "linuxVmSize": {
             "value": "[parameters('linuxVmSize')]"
           },
@@ -1713,7 +1710,8 @@
       "name": "[variables('arcDeploymentName')]",
       "resourceGroup": "[variables('tier3ResourceGroupName')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]"
+        "[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]",
+        "[variables('labVmDeploymentName')]"
       ],
       "properties": {
         "expressionEvaluationOptions": {

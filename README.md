@@ -30,7 +30,7 @@ subnet and (optionally) a delegated subnet for a Private DNS Resolver.
 - 3 Windows 11 clients — joined, with hybrid-join and Intune auto-enrollment retry tasks.
 - 3 Linux servers — **RHEL, Ubuntu, SLES** — each with **Entra SSH login** (`AADSSHLoginForLinux`),
   auditd + rsyslog wired for the Syslog pipeline.
-- Entra login + VM Login RBAC on every VM; Azure Monitor Agent on every VM; MDE extension on servers;
+- Entra login + VM Login RBAC on every VM; Azure Monitor Agent on every VM; MDE auto-provisioned by Defender for Servers;
   DevTest auto-shutdown at 03:00 UTC (23:00 ET).
 - Forest baseline: OU tree, security groups, a lab user **created enabled with a password** (so a
   soft-match to a live cloud identity doesn't sync "disabled"), UPN suffix, AD Recycle Bin, an
@@ -199,7 +199,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lee-aguilar-msft/Azure
 | `deploy.ps1` | Subscription-scope deploy wrapper with secret prompts (Gov or Commercial). |
 | `destroy.ps1` | Teardown by naming prefix + optional Defender/policy/Entra cleanup. |
 | `templates/tier3.json` | MLZ tier3 fork (adds `managementVirtualMachineSize`; firewall rules + additional subnets flow through). |
-| `templates/ad-entra-vms.json` | DCs, member servers, Windows clients, Linux trio, Entra login, AMA, MDE, auto-shutdown, run-command automation. |
+| `templates/ad-entra-vms.json` | DCs, member servers, Windows clients, Linux trio, Entra login, AMA, auto-shutdown, run-command automation (MDE via Defender for Servers auto-provisioning). |
 | `templates/security-lab.json` | Sentinel onboarding, DCRs + associations, optional content/analytics/UEBA deploymentScript. |
 | `templates/arc-private-link.json` | Arc Private Link Scope, private endpoint, Arc private DNS zones, optional Private DNS Resolver. |
 | `templates/cspm-coverage.json` | SQL/Storage/ACR/Key Vault/App Service/API Management + nested-deployment samples for Defender coverage. |
