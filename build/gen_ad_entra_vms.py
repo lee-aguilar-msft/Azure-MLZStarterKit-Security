@@ -9,7 +9,7 @@ Produces a resource-group-scoped ARM template that deploys the AD forest + Entra
   - Entra login extension on every VM + VM Login RBAC
   - Azure Monitor Agent on every VM (DCR associations are created by the security-lab module)
   - DevTest auto-shutdown at 03:00 local (23:00 ET) on every VM
-  - MDE.Windows / MDE.Linux extensions on servers when deployMde = true
+  - MDE: auto-provisioned by Defender for Servers (no template-declared MDE extensions)
 Scripts are embedded inline from templates/scripts so the lab works behind the MLZ firewall.
 """
 import json, os, base64
@@ -38,7 +38,7 @@ hydrate_linux_b64 = b64("hydrate-linux.sh")
 tmpl = {
     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
     "contentVersion": "1.0.0.0",
-    "metadata": {"description": "AD forest + Entra lab: DCs, member servers, Windows clients, Linux servers, Entra login, AMA, MDE, auto-shutdown."},
+    "metadata": {"description": "AD forest + Entra lab: DCs, member servers, Windows clients, Linux servers, Entra login, AMA, auto-shutdown (MDE via Defender for Servers auto-provisioning)."},
     "parameters": {
         "location": {"type": "string"},
         "prefix": {"type": "string", "metadata": {"description": "Resource name prefix, e.g. 'sdl' or 'rrs'."}},
@@ -57,12 +57,11 @@ tmpl = {
         "labUserPassword": {"type": "secureString", "defaultValue": ""},
         "cloudSuffix": {"type": "string", "defaultValue": "us", "allowedValues": ["us", "com"], "metadata": {"description": "'us' = Azure Government / GCC High endpoints; 'com' = commercial."}},
         "intuneCredentialType": {"type": "string", "defaultValue": "1", "allowedValues": ["1", "2"], "metadata": {"description": "1 = user credential auto-enroll, 2 = device credential."}},
-        "mdeOnboardingBlob": {"type": "secureString", "defaultValue": "", "metadata": {"description": "Raw MDE onboarding JSON (from the GCC High / commercial onboarding package). Applied to clients via run-command and to all machines via a startup-script GPO. Empty = rely on the MDE.Windows/MDE.Linux extension instead."}},
+        "mdeOnboardingBlob": {"type": "secureString", "defaultValue": "", "metadata": {"description": "Raw MDE onboarding JSON (from the GCC High / commercial onboarding package). Applied to clients via run-command and to all machines via a startup-script GPO. Empty = rely on Defender for Servers auto-provisioning of MDE instead."}},
         "entraLoginPrincipalId": {"type": "string", "defaultValue": "", "metadata": {"description": "Object ID of the Entra user/group granted VM login."}},
         "entraPrincipalType": {"type": "string", "defaultValue": "Group", "allowedValues": ["Group", "User", "ServicePrincipal"]},
         "assignVmAdminRole": {"type": "bool", "defaultValue": True},
         "assignVmUserRole": {"type": "bool", "defaultValue": False},
-        "deployMde": {"type": "bool", "defaultValue": False, "metadata": {"description": "Install the MDE.Windows/MDE.Linux Defender for Servers extension on the servers."}},
         "deployLinuxVms": {"type": "bool", "defaultValue": True},
         "deployHydration": {"type": "bool", "defaultValue": True, "metadata": {"description": "Register the benign activity generator that feeds the hunting workspace."}},
         "hydrationIntervalMinutes": {"type": "string", "defaultValue": "60"},
@@ -118,7 +117,9 @@ R.append({
     "type": "Microsoft.Network/networkInterfaces", "apiVersion": "2023-09-01",
     "name": "[format('{0}-nic', variables('windowsVms')[copyIndex()].name)]",
     "location": "[parameters('location')]",
-    "copy": {"name": "winNicLoop", "count": "[length(variables('windowsVms'))]"},
+    # Serial so the DC NIC (index 0, static domainControllerPrivateIp) is allocated before any dynamic NIC
+    # can grab that address. The first real run lost 10.60.0.10 to a concurrently created private endpoint.
+    "copy": {"name": "winNicLoop", "count": "[length(variables('windowsVms'))]", "mode": "serial", "batchSize": 1},
     "properties": {
         "ipConfigurations": [{
             "name": "ipconfig1",
@@ -280,16 +281,12 @@ R.append({
     "properties": {"publisher": "Microsoft.Azure.Monitor", "type": "AzureMonitorWindowsAgent", "typeHandlerVersion": "1.0", "autoUpgradeMinorVersion": True, "enableAutomaticUpgrade": True},
 })
 
-# ---- MDE (Windows servers only; clients use the onboarding blob) ----
-R.append({
-    "type": "Microsoft.Compute/virtualMachines/extensions", "apiVersion": "2023-09-01",
-    "name": "[format('{0}/MDE.Windows', variables('windowsVms')[copyIndex()].name)]",
-    "location": "[parameters('location')]",
-    "condition": "[and(parameters('deployMde'), variables('windowsVms')[copyIndex()].isServer)]",
-    "copy": {"name": "mdeWinLoop", "count": "[length(variables('windowsVms'))]"},
-    "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines/extensions', variables('windowsVms')[copyIndex()].name, 'AzureMonitorWindowsAgent')]"],
-    "properties": {"publisher": "Microsoft.Azure.AzureDefenderForServers", "type": "MDE.Windows", "typeHandlerVersion": "1.0", "autoUpgradeMinorVersion": True, "settings": {"forceReOnboarding": False, "provisioningMode": "Auto"}},
-})
+# ---- MDE ----
+# The MDE.Windows / MDE.Linux extensions are owned by Defender for Cloud: when Defender for Servers is
+# Standard on the subscription (deployDefenderForServers), Defender auto-provisions them on every Azure VM
+# within ~an hour of creation. Deploying them from a template fails with "Failed to configure Microsoft
+# Defender for Endpoint: You cannot call a method on a null-valued expression" (seen in the first real run),
+# so the kit no longer declares them. Clients can additionally be onboarded with mdeOnboardingBlob.
 
 # ---- VM login RBAC (Windows) ----
 R.append({
@@ -335,6 +332,7 @@ R.append({
     "location": "[parameters('location')]",
     "condition": "[parameters('deployLinuxVms')]",
     "copy": {"name": "lnxNicLoop", "count": "[length(variables('linuxVms'))]"},
+    "dependsOn": ["winNicLoop"],
     "properties": {
         "ipConfigurations": [{"name": "ipconfig1", "properties": {"subnet": {"id": "[parameters('subnetResourceId')]"}, "privateIPAllocationMethod": "Dynamic"}}],
         "dnsSettings": {"dnsServers": "[variables('dnsServerList')]"},
@@ -404,15 +402,6 @@ R.append({
             {"name": "arg3", "value": "[parameters('hydrationIntervalMinutes')]"},
         ],
     },
-})
-R.append({
-    "type": "Microsoft.Compute/virtualMachines/extensions", "apiVersion": "2023-09-01",
-    "name": "[format('{0}/MDE.Linux', variables('linuxVms')[copyIndex()].name)]",
-    "location": "[parameters('location')]",
-    "condition": "[and(parameters('deployLinuxVms'), parameters('deployMde'))]",
-    "copy": {"name": "mdeLnxLoop", "count": "[length(variables('linuxVms'))]"},
-    "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines/extensions', variables('linuxVms')[copyIndex()].name, 'AzureMonitorLinuxAgent')]"],
-    "properties": {"publisher": "Microsoft.Azure.AzureDefenderForServers", "type": "MDE.Linux", "typeHandlerVersion": "1.0", "autoUpgradeMinorVersion": True, "settings": {"forceReOnboarding": False, "provisioningMode": "Auto"}},
 })
 R.append({
     "type": "Microsoft.Authorization/roleAssignments", "apiVersion": "2022-04-01",

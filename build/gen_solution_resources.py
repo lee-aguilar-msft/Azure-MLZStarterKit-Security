@@ -42,7 +42,6 @@ lp["autoShutdownTime"] = val("[parameters('autoShutdownTime')]")
 lp["autoShutdownTimeZone"] = val("[parameters('autoShutdownTimeZone')]")
 lp["deployLinuxVms"] = val("[parameters('deployLinuxVms')]")
 lp["linuxVmSize"] = val("[parameters('linuxVmSize')]")
-lp["deployMde"] = val("[parameters('deployDefenderForServers')]")
 
 # ---- replace the Sentinel inline deployment with the security-lab module ----
 tier3rg = "[format('/subscriptions/{0}/resourceGroups/{1}', subscription().subscriptionId, variables('tier3ResourceGroupName'))]"
@@ -85,7 +84,8 @@ arc = collections.OrderedDict([
     ("apiVersion", "2025-04-01"),
     ("name", "[variables('arcDeploymentName')]"),
     ("resourceGroup", "[variables('tier3ResourceGroupName')]"),
-    ("dependsOn", ["[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]"]),
+    # After the VM module so the Arc private endpoint cannot take the DC's static IP in the shared subnet.
+    ("dependsOn", ["[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]", "[variables('labVmDeploymentName')]"]),
     ("properties", collections.OrderedDict([
         ("expressionEvaluationOptions", {"scope": "inner"}),
         ("mode", "Incremental"),
