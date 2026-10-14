@@ -19,7 +19,7 @@ lab_step = {
     "elements": [
         {"name": "cloudInfo", "type": "Microsoft.Common.InfoBox", "visible": True,
          "options": {"icon": "Info", "text": "Primary target is Azure Government (GCC High). Choose the cloud so firewall rules, MDE/Intune/Arc endpoints and device-registration URLs resolve to the right (.us vs .com) hosts."}},
-        {"name": "cloudSuffix", "type": "Microsoft.Common.DropDown", "label": "Target cloud endpoints", "defaultValue": "Azure Government (GCC High / DoD)",
+        {"name": "cloudSuffix", "type": "Microsoft.Common.DropDown", "label": "Target cloud endpoints", "defaultValue": "Azure Government (GCC High / DoD)", "visible": False,
          "toolTip": "Selects the .us (Government) or .com (commercial) service endpoints used by the firewall rules and in-guest configuration.",
          "constraints": {"allowedValues": [
              {"label": "Azure Government (GCC High / DoD)", "value": "us"},
@@ -53,12 +53,13 @@ if "labOptions" not in names:
 outs = u["view"]["outputs"]["parameters"]
 for stale in ("deployMde", "deployLinuxVm", "linuxFlavor"):
     outs.pop(stale, None)
-outs["cloudSuffix"] = "[steps('labOptions').cloudSuffix]"
+GOV = "or(contains(steps('basics').resourceScope.location.name, 'usgov'), contains(steps('basics').resourceScope.location.name, 'usdod'))"  # Azure Government region selected on Basics
+outs["cloudSuffix"] = f"[if({GOV}, 'us', 'com')]"
 outs["upnSuffix"] = "[steps('labOptions').upnSuffix]"
 outs["labUserName"] = "[steps('labOptions').labUserName]"
 outs["labUserPassword"] = ""
 outs["deployLinuxVms"] = "[steps('labOptions').deployLinuxVms]"
-outs["linuxVmSize"] = "[steps('remoteAccess').linuxVmSize]"
+outs["linuxVmSize"] = f"[if({GOV}, steps('remoteAccess').linuxVmSizeGov, steps('remoteAccess').linuxVmSizeCom)]"
 outs["deployFirewallRules"] = "[steps('labOptions').deployFirewallRules]"
 outs["allowAllAzureServiceTags"] = "[steps('labOptions').allowAllAzureServiceTags]"
 outs["enableSentinelAnalytics"] = "[steps('labOptions').enableSentinelAnalytics]"
