@@ -153,10 +153,10 @@
       "value": true
     },
     "deployDefenderForApis": {
-      "value": true
+      "value": false
     },
     "deployDefenderForAppService": {
-      "value": true
+      "value": false
     },
     "deployDefenderForKeyVault": {
       "value": true
@@ -173,11 +173,11 @@
     "deployDefenderForArm": {
       "value": true
     },
-    "deployFedRampHigh": {
-      "value": true
-    },
     "defenderForApisSubPlan": {
       "value": "P1"
+    },
+    "deployMcsb": {
+      "value": true
     }
   }
 }
