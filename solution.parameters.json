@@ -1,0 +1,111 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "value": ""
+    },
+    "identifier": {
+      "value": ""
+    },
+    "deploymentNameSuffix": {
+      "value": ""
+    },
+    "environmentAbbreviation": {
+      "value": "dev"
+    },
+    "deployBastion": {
+      "value": true
+    },
+    "deployActivityLogDiagnosticSetting": {
+      "value": false
+    },
+    "deployDefender": {
+      "value": false
+    },
+    "deployPolicy": {
+      "value": false
+    },
+    "emailSecurityContact": {
+      "value": ""
+    },
+    "virtualNetworkAddressPrefix": {
+      "value": "10.60.0.0/24"
+    },
+    "subnetAddressPrefix": {
+      "value": "10.60.0.0/24"
+    },
+    "workloadName": {
+      "value": ""
+    },
+    "workloadShortName": {
+      "value": ""
+    },
+    "prefix": {
+      "value": ""
+    },
+    "domainControllerPrivateIp": {
+      "value": "10.60.0.10"
+    },
+    "additionalDnsServers": {
+      "value": []
+    },
+    "adminUsername": {
+      "value": ""
+    },
+    "adminPassword": {
+      "value": ""
+    },
+    "safeModeAdminPassword": {
+      "value": ""
+    },
+    "domainName": {
+      "value": ""
+    },
+    "domainNetbiosName": {
+      "value": ""
+    },
+    "entraLoginPrincipalId": {
+      "value": ""
+    },
+    "entraPrincipalType": {
+      "value": "Group"
+    },
+    "assignVmAdminRole": {
+      "value": true
+    },
+    "assignVmUserRole": {
+      "value": false
+    },
+    "serverVmSize": {
+      "value": "Standard_D4s_v5"
+    },
+    "clientVmSize": {
+      "value": "Standard_D4s_v5"
+    },
+    "serverImagePublisher": {
+      "value": "MicrosoftWindowsServer"
+    },
+    "serverImageOffer": {
+      "value": "WindowsServer"
+    },
+    "serverImageSku": {
+      "value": "2022-datacenter-g2"
+    },
+    "serverImageVersion": {
+      "value": "latest"
+    },
+    "clientImagePublisher": {
+      "value": "MicrosoftWindowsDesktop"
+    },
+    "clientImageOffer": {
+      "value": "windows-11"
+    },
+    "clientImageSku": {
+      "value": "win11-23h2-pro"
+    },
+    "clientImageVersion": {
+      "value": "latest"
+    }
+  }
+}

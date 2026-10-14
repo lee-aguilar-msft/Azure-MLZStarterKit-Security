@@ -1,0 +1,978 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2021-09-09/uiFormDefinition.schema.json",
+  "view": {
+    "kind": "Form",
+    "properties": {
+      "title": "Mission Landing Zone AD + Entra One-Shot",
+      "steps": [
+        {
+          "name": "basics",
+          "label": "Basics",
+          "elements": [
+            {
+              "name": "description",
+              "type": "Microsoft.Common.TextBlock",
+              "options": {
+                "text": "Deploys MLZ core hub, Tier3 network, AD lab (1 DC, 2 member servers, 3 clients), Entra VM sign-in, and CSPM sample resources."
+              }
+            },
+            {
+              "name": "resourceScope",
+              "type": "Microsoft.Common.ResourceScope",
+              "location": {
+                "resourceTypes": [
+                  "Microsoft.Network/virtualNetworks",
+                  "Microsoft.Network/azureFirewalls",
+                  "Microsoft.Network/bastionHosts",
+                  "Microsoft.OperationalInsights/workspaces",
+                  "Microsoft.Compute/virtualMachines",
+                  "Microsoft.Storage/storageAccounts",
+                  "Microsoft.Sql/servers",
+                  "Microsoft.ContainerRegistry/registries"
+                ]
+              }
+            },
+            {
+              "name": "identifier",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Resource Naming Identifier",
+              "toolTip": "1-3 character identifier used in MLZ naming.",
+              "constraints": {
+                "required": true,
+                "validations": [
+                  {
+                    "regex": "^[a-zA-Z0-9]{1,3}$",
+                    "message": "Use 1-3 alphanumeric characters."
+                  }
+                ]
+              }
+            },
+            {
+              "name": "environmentAbbreviation",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Environment Abbreviation",
+              "defaultValue": "dev",
+              "constraints": {
+                "required": true,
+                "allowedValues": [
+                  {
+                    "label": "dev",
+                    "value": "dev"
+                  },
+                  {
+                    "label": "test",
+                    "value": "test"
+                  },
+                  {
+                    "label": "prod",
+                    "value": "prod"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "workloadName",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Workload Name",
+              "toolTip": "1-10 character workload name for Tier3 deployment.",
+              "constraints": {
+                "required": true,
+                "validations": [
+                  {
+                    "regex": "^[a-zA-Z0-9]{1,10}$",
+                    "message": "Use 1-10 alphanumeric characters."
+                  }
+                ]
+              }
+            },
+            {
+              "name": "workloadShortName",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Workload Short Name",
+              "placeholder": "e.g. id1, t3, ops",
+              "toolTip": "1-3 alphanumeric characters used in Tier3 resource naming. Examples: 'id1' for identity, 't3' for tier3, 'ops' for operations. This appears in resource group and resource names.",
+              "constraints": {
+                "required": true,
+                "validations": [
+                  {
+                    "regex": "^[a-zA-Z0-9]{1,3}$",
+                    "message": "Use 1-3 alphanumeric characters (e.g. id1, t3, ops)."
+                  }
+                ]
+              }
+            },
+            {
+              "name": "prefix",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Resource Prefix",
+              "toolTip": "Prefix for VMs and CSPM resources.",
+              "constraints": {
+                "required": true,
+                "validations": [
+                  {
+                    "regex": "^[a-zA-Z0-9-]{2,15}$",
+                    "message": "Use 2-15 characters (letters, numbers, hyphen)."
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "networking",
+          "label": "Networking",
+          "elements": [
+            {
+              "name": "deployBastion",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Deploy Bastion",
+              "defaultValue": true
+            },
+            {
+              "name": "virtualNetworkAddressPrefix",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Tier3 Virtual Network CIDR",
+              "defaultValue": "10.60.0.0/24",
+              "constraints": {
+                "required": true,
+                "validations": [
+                  {
+                    "regex": "^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\/(1[0-9]|2[0-8])$",
+                    "message": "Enter a valid CIDR value."
+                  }
+                ]
+              }
+            },
+            {
+              "name": "subnetAddressPrefix",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Tier3 Subnet CIDR",
+              "defaultValue": "10.60.0.0/24",
+              "constraints": {
+                "required": true,
+                "validations": [
+                  {
+                    "regex": "^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\/(1[0-9]|2[0-8])$",
+                    "message": "Enter a valid CIDR value."
+                  }
+                ]
+              }
+            },
+            {
+              "name": "domainControllerPrivateIp",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Domain Controller Private IP",
+              "defaultValue": "10.60.0.10",
+              "constraints": {
+                "required": true,
+                "validations": [
+                  {
+                    "regex": "^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)$",
+                    "message": "Enter a valid IPv4 address."
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "securityCompliance",
+          "label": "Security and Compliance",
+          "elements": [
+            {
+              "name": "emailSecurityContact",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Security Contact Email",
+              "defaultValue": "security@example.mil",
+              "toolTip": "Email address for Defender for Cloud security alerts and recommendations.",
+              "constraints": {
+                "required": true,
+                "validations": [
+                  {
+                    "regex": "^.+@.+\\..+$",
+                    "message": "Enter a valid email address."
+                  }
+                ]
+              }
+            },
+            {
+              "name": "defenderHeader",
+              "type": "Microsoft.Common.TextBlock",
+              "options": {
+                "style": "Heading",
+                "text": "Microsoft Defender for Cloud"
+              }
+            },
+            {
+              "name": "defenderCostNote",
+              "type": "Microsoft.Common.InfoBox",
+              "options": {
+                "style": "Warning",
+                "text": "Each Defender plan is billed separately. Review Azure Defender pricing before enabling plans in a production subscription."
+              }
+            },
+            {
+              "name": "deployDefender",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Enable Defender for Cloud (base)",
+              "toolTip": "Enables the Defender for Cloud service and configures the security contact. Required before individual plans take effect.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderCspm",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender CSPM \u2014 Cloud Security Posture Management",
+              "toolTip": "Agentless posture management: attack path analysis, cloud security graph, agentless vulnerability assessment, and regulatory compliance dashboard. No per-VM agent required. Recommended for broad visibility.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderForServers",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for Servers",
+              "toolTip": "Threat protection for Windows and Linux VMs. P1 includes Microsoft Defender for Endpoint (MDE) integration only. P2 adds agentless scanning, file integrity monitoring, JIT VM access, and adaptive application controls.",
+              "defaultValue": false
+            },
+            {
+              "name": "defenderForServersSubPlan",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Defender for Servers Plan",
+              "visible": "[steps('securityCompliance').deployDefenderForServers]",
+              "defaultValue": "P2 \u2014 Full Protection (recommended)",
+              "toolTip": "P1: MDE integration only. P2: Full protection including vulnerability assessment, JIT VM access, and file integrity monitoring.",
+              "constraints": {
+                "required": "[steps('securityCompliance').deployDefenderForServers]",
+                "allowedValues": [
+                  {
+                    "label": "P1 \u2014 Defender for Endpoint integration only",
+                    "value": "P1"
+                  },
+                  {
+                    "label": "P2 \u2014 Full Protection (recommended)",
+                    "value": "P2"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "deployDefenderForStorage",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for Storage",
+              "toolTip": "Detects malware uploads, anomalous access, and sensitive data exposure in Storage accounts. Priced per storage account.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderForSql",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for SQL",
+              "toolTip": "Threat protection for SQL Server on Azure VMs and Arc-enabled machines. Detects SQL injection, brute force, and anomalous access.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderForContainers",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for Containers",
+              "toolTip": "Protects AKS clusters and Azure Container Registry (ACR). Includes container image vulnerability assessment and run-time threat detection.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderForAppService",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for App Service",
+              "toolTip": "Detects exploit attempts, malicious connections, and suspicious processes in App Service plans.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderForKeyVault",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for Key Vault",
+              "toolTip": "Alerts on suspicious Key Vault access: TOR exit node access, unusual geolocation, high-volume secret enumeration, and credential theft patterns.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderForArm",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for Resource Manager",
+              "toolTip": "Monitors all ARM management-plane operations for lateral movement, privilege escalation, suspicious tool usage, and cryptomining via automation accounts.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderForDns",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for DNS",
+              "toolTip": "Detects DNS-based threats: data exfiltration via DNS tunneling, C2 beaconing, and malicious domain resolution from Azure resources.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderForOssDb",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for Open-Source Relational Databases",
+              "toolTip": "Threat protection for Azure Database for PostgreSQL, MySQL, and MariaDB. Detects SQL injection and anomalous access.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderForCosmosDb",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for Azure Cosmos DB",
+              "toolTip": "Detects SQL injection, anomalous access patterns, and potential data exfiltration from Cosmos DB accounts.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployDefenderForApis",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Defender for APIs",
+              "toolTip": "API security posture and runtime threat protection for APIs published through Azure API Management (APIM).",
+              "defaultValue": false
+            },
+            {
+              "name": "policyHeader",
+              "type": "Microsoft.Common.TextBlock",
+              "options": {
+                "style": "Heading",
+                "text": "Policy Assignments"
+              }
+            },
+            {
+              "name": "policyNote",
+              "type": "Microsoft.Common.InfoBox",
+              "options": {
+                "style": "Info",
+                "text": "All initiatives are assigned in DoNotEnforce (audit-only) mode \u2014 they surface compliance gaps in the Defender for Cloud dashboard without blocking deployments. NIST 800-53 and IL5 are required for FedRAMP and DoD authorization packages."
+              }
+            },
+            {
+              "name": "deployPolicy",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Apply MLZ Built-in Policy Set",
+              "toolTip": "Deploys Mission Landing Zone built-in policy assignments covering SCCA-aligned controls for hub/spoke networking, logging, and access management.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployNist80053",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "NIST SP 800-53 Rev. 5",
+              "toolTip": "Assigns the built-in NIST SP 800-53 Rev. 5 regulatory compliance initiative. Covers 20 control families (AC, AU, CM, IA, SC, SI). Required for FedRAMP Moderate and High authorization.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployNist800171",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "NIST SP 800-171 Rev. 2",
+              "toolTip": "Assigns the built-in NIST SP 800-171 Rev. 2 initiative for protection of Controlled Unclassified Information (CUI). Required for DFARS 252.204-7012 compliance and CMMC Level 2.",
+              "defaultValue": false
+            },
+            {
+              "name": "deployIl5",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "DoD Impact Level 5 (IL5) \u2014 Azure Government only",
+              "toolTip": "Assigns the DoD IL5 regulatory compliance initiative for National Security Systems and CUI up to SECRET. Only applicable in Azure Government regions.",
+              "defaultValue": false
+            },
+            {
+              "name": "logHeader",
+              "type": "Microsoft.Common.TextBlock",
+              "options": {
+                "style": "Heading",
+                "text": "Logging and SIEM"
+              }
+            },
+            {
+              "name": "deployActivityLogDiagnosticSetting",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Send Activity Log to Log Analytics",
+              "toolTip": "Sends Azure subscription Activity Log (ARM deployments, RBAC changes, policy events, service health) to the MLZ Log Analytics workspace for long-term retention and querying.",
+              "defaultValue": false
+            },
+            {
+              "name": "deploySentinel",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Enable Microsoft Sentinel",
+              "toolTip": "Deploys Microsoft Sentinel (cloud-native SIEM/SOAR) on a Log Analytics workspace. A new workspace will be created in the workload resource group unless you select an existing one.",
+              "defaultValue": false
+            },
+            {
+              "name": "workspaceOption",
+              "type": "Microsoft.Common.OptionsGroup",
+              "label": "Log Analytics Workspace",
+              "visible": "[steps('securityCompliance').deploySentinel]",
+              "defaultValue": "new",
+              "constraints": {
+                "allowedValues": [
+                  {
+                    "label": "Create a new workspace",
+                    "value": "new"
+                  },
+                  {
+                    "label": "Use an existing workspace",
+                    "value": "existing"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "newWorkspaceName",
+              "type": "Microsoft.Common.TextBox",
+              "label": "New workspace name",
+              "visible": "[and(steps('securityCompliance').deploySentinel, equals(steps('securityCompliance').workspaceOption, 'new'))]",
+              "defaultValue": "[concat('law-', steps('basics').workloadShortName)]",
+              "toolTip": "Name for the new Log Analytics workspace. Will be created in the workload tier3 resource group alongside the VMs.",
+              "placeholder": "e.g. law-adlab",
+              "constraints": {
+                "required": "[and(steps('securityCompliance').deploySentinel, equals(steps('securityCompliance').workspaceOption, 'new'))]",
+                "regex": "^[a-zA-Z0-9][a-zA-Z0-9-]{1,61}[a-zA-Z0-9]$",
+                "validationMessage": "3\u201363 characters, letters/numbers/hyphens only, must start and end with a letter or number."
+              }
+            },
+            {
+              "name": "existingWorkspace",
+              "type": "Microsoft.Solutions.ResourceSelector",
+              "label": "Existing Log Analytics Workspace",
+              "visible": "[and(steps('securityCompliance').deploySentinel, equals(steps('securityCompliance').workspaceOption, 'existing'))]",
+              "resourceType": "Microsoft.OperationalInsights/workspaces",
+              "toolTip": "Select the Log Analytics workspace to enable Sentinel on.",
+              "options": {
+                "filter": {
+                  "subscription": "onBasics",
+                  "location": "onBasics"
+                }
+              }
+            },
+            {
+              "name": "cspmNote",
+              "type": "Microsoft.Common.InfoBox",
+              "options": {
+                "style": "Info",
+                "text": "This deployment includes CSPM/CWPP sample coverage resources (SQL DB, Storage + Blob, ACR, and a nested ARM deployment) useful for validating Defender alerts and compliance controls."
+              }
+            },
+            {
+              "name": "cspmNamingNote",
+              "type": "Microsoft.Common.InfoBox",
+              "options": {
+                "style": "Info",
+                "text": "CSPM resource names are auto-generated from a deterministic hash of the workload resource group ID and the Prefix you set on the Basics tab. You cannot predict them before deployment, but they are stable across re-deploys.\n\nNaming pattern (all in workload RG):\n\u2022 Storage account: st[hash] (up to 24 chars)\n\u2022 Blob container: coverage-container (always)\n\u2022 Container Registry: acr[hash] (up to 50 chars)\n\u2022 SQL Server: sql-[hash]\n\u2022 SQL Database: defenderdb (always)\n\nAfter deployment, find all names on the 'Outputs' tab of the deployment, or browse the workload resource group in the portal."
+              }
+            }
+          ]
+        },
+        {
+          "name": "labOptions",
+          "label": "Lab Options",
+          "elements": [
+            {
+              "name": "cloudInfo",
+              "type": "Microsoft.Common.InfoBox",
+              "visible": true,
+              "options": {
+                "icon": "Info",
+                "text": "Primary target is Azure Government (GCC High). Choose the cloud so firewall rules, MDE/Intune/Arc endpoints and device-registration URLs resolve to the right (.us vs .com) hosts."
+              }
+            },
+            {
+              "name": "cloudSuffix",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Target cloud endpoints",
+              "defaultValue": "Azure Government (GCC High / DoD)",
+              "toolTip": "Selects the .us (Government) or .com (commercial) service endpoints used by the firewall rules and in-guest configuration.",
+              "constraints": {
+                "allowedValues": [
+                  {
+                    "label": "Azure Government (GCC High / DoD)",
+                    "value": "us"
+                  },
+                  {
+                    "label": "Azure Commercial",
+                    "value": "com"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "upnSuffix",
+              "type": "Microsoft.Common.TextBox",
+              "label": "UPN suffix (verified Entra domain)",
+              "defaultValue": "",
+              "toolTip": "Added as an AD UPN suffix so synced users keep a routable UPN that matches a verified Entra domain. Leave blank to use the AD domain name.",
+              "constraints": {
+                "required": false
+              }
+            },
+            {
+              "name": "labUserName",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Lab user sAMAccountName",
+              "defaultValue": "lab.user",
+              "toolTip": "A domain user created ENABLED with a password (so a soft-match to a live cloud identity does not sync 'disabled').",
+              "constraints": {
+                "required": false
+              }
+            },
+            {
+              "name": "deployLinuxVms",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Deploy 3 Linux servers (RHEL / Ubuntu / SLES) with Entra SSH login",
+              "defaultValue": true
+            },
+            {
+              "name": "deployFirewallRules",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Add lab firewall rules (Intune / MDE / Arc / Entra / Linux repos / PKI)",
+              "defaultValue": true
+            },
+            {
+              "name": "allowAllAzureServiceTags",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Also allow the workload subnet to the AzureCloud service tag (broad \u2014 lab convenience)",
+              "defaultValue": true
+            },
+            {
+              "name": "enableSentinelAnalytics",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Enable all matching built-in Sentinel analytics rules + UEBA (run post-deploy or inline)",
+              "defaultValue": true
+            },
+            {
+              "name": "deploySentinelContentScript",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Run the Sentinel content/analytics enablement inline (needs Container Instance provider + ACI reachability)",
+              "defaultValue": false
+            },
+            {
+              "name": "deployArcPrivateLink",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Deploy Azure Arc Private Link Scope + Arc private DNS zones",
+              "defaultValue": false
+            },
+            {
+              "name": "deployPrivateDnsResolver",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Deploy an Azure Private DNS Resolver inbound endpoint",
+              "defaultValue": false
+            },
+            {
+              "name": "mdeBlobHeader",
+              "type": "Microsoft.Common.TextBlock",
+              "visible": true,
+              "options": {
+                "text": "Optional: paste the raw contents of your Defender onboarding package (WindowsDefenderATPOnboardingScript JSON). Applied to the Windows clients and as a startup-script GPO. Leave blank to onboard servers via the Defender for Servers extension only."
+              }
+            },
+            {
+              "name": "mdeOnboardingBlob",
+              "type": "Microsoft.Common.TextBox",
+              "label": "MDE onboarding blob (optional)",
+              "defaultValue": "",
+              "multiLine": true,
+              "constraints": {
+                "required": false
+              }
+            }
+          ]
+        },
+        {
+          "name": "identity",
+          "label": "Identity",
+          "elements": [
+            {
+              "name": "adminUsername",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Admin Username",
+              "constraints": {
+                "required": true
+              }
+            },
+            {
+              "name": "adminPassword",
+              "type": "Microsoft.Common.PasswordBox",
+              "label": {
+                "password": "Admin Password",
+                "confirmPassword": "Confirm Admin Password"
+              },
+              "constraints": {
+                "required": true,
+                "regex": "^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$%^&*-]).{12,72}$",
+                "validationMessage": "Use 12-72 chars with upper/lower/number/special."
+              },
+              "options": {
+                "hideConfirmation": false
+              }
+            },
+            {
+              "name": "safeModeAdminPassword",
+              "type": "Microsoft.Common.PasswordBox",
+              "label": {
+                "password": "Safe Mode Admin Password (DSRM)",
+                "confirmPassword": "Confirm Safe Mode Admin Password"
+              },
+              "constraints": {
+                "required": true,
+                "regex": "^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$%^&*-]).{12,72}$",
+                "validationMessage": "Use 12-72 chars with upper/lower/number/special."
+              },
+              "options": {
+                "hideConfirmation": false
+              }
+            },
+            {
+              "name": "domainName",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Domain Name",
+              "placeholder": "corp.contoso.com",
+              "constraints": {
+                "required": true
+              }
+            },
+            {
+              "name": "domainNetbiosName",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Domain NetBIOS Name",
+              "placeholder": "CORP",
+              "constraints": {
+                "required": true
+              }
+            },
+            {
+              "name": "entraAccessHeader",
+              "type": "Microsoft.Common.TextBlock",
+              "options": {
+                "style": "Heading",
+                "text": "Entra VM Login Access"
+              }
+            },
+            {
+              "name": "entraGroupNote",
+              "type": "Microsoft.Common.InfoBox",
+              "options": {
+                "style": "Info",
+                "text": "To find your group's Object ID: Azure Portal > Microsoft Entra ID > Groups > select your group > copy the Object ID field."
+              }
+            },
+            {
+              "name": "entraGroupSelector",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Entra Security Group Object ID",
+              "toolTip": "Object ID (GUID) of an existing Entra ID security group. Members of this group will be assigned VM Administrator Login access on all deployed VMs.",
+              "placeholder": "xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx",
+              "constraints": {
+                "required": true,
+                "validations": [
+                  {
+                    "regex": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$",
+                    "message": "Enter a valid GUID in the format xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx."
+                  }
+                ]
+              }
+            },
+            {
+              "name": "assignVmAdminRole",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Assign Virtual Machine Administrator Login role",
+              "defaultValue": true
+            },
+            {
+              "name": "assignVmUserRole",
+              "type": "Microsoft.Common.CheckBox",
+              "label": "Assign Virtual Machine User Login role",
+              "defaultValue": false
+            }
+          ]
+        },
+        {
+          "name": "remoteAccess",
+          "label": "Compute",
+          "elements": [
+            {
+              "name": "serverImagePublisher",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Server Image Publisher",
+              "defaultValue": "MicrosoftWindowsServer",
+              "constraints": {
+                "required": true,
+                "allowedValues": [
+                  {
+                    "label": "MicrosoftWindowsServer",
+                    "value": "MicrosoftWindowsServer"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "serverImageOffer",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Server Image Offer",
+              "defaultValue": "WindowsServer",
+              "constraints": {
+                "required": true,
+                "allowedValues": [
+                  {
+                    "label": "WindowsServer",
+                    "value": "WindowsServer"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "serverImageSku",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Server Image SKU",
+              "defaultValue": "Windows Server 2022 Gen2",
+              "toolTip": "Marketplace server image SKU. Windows Server 2022 Gen2 is recommended for most deployments.",
+              "constraints": {
+                "required": true,
+                "allowedValues": [
+                  {
+                    "label": "Windows Server 2019 Gen2",
+                    "value": "2019-datacenter-gensecond"
+                  },
+                  {
+                    "label": "Windows Server 2022 Gen2",
+                    "value": "2022-datacenter-g2"
+                  },
+                  {
+                    "label": "Windows Server 2025 Gen2",
+                    "value": "2025-datacenter-azure-edition"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "serverImageVersion",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Server Image Version",
+              "defaultValue": "latest",
+              "toolTip": "Use 'latest' or provide a specific marketplace version.",
+              "constraints": {
+                "required": true
+              }
+            },
+            {
+              "name": "serverVmSize",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Server VM Size",
+              "toolTip": "VM size for the domain controller and member servers. Standard_D4ads_v6 is recommended and available in Azure Government regions.",
+              "defaultValue": "Standard_D4ads_v6 (4 vCPUs, 16 GiB) \u2014 recommended",
+              "constraints": {
+                "required": true,
+                "allowedValues": [
+                  {
+                    "label": "Standard_D2ads_v6 (2 vCPUs, 8 GiB) \u2014 small lab / dev",
+                    "value": "Standard_D2ads_v6"
+                  },
+                  {
+                    "label": "Standard_D4ads_v6 (4 vCPUs, 16 GiB) \u2014 recommended",
+                    "value": "Standard_D4ads_v6"
+                  },
+                  {
+                    "label": "Standard_D8ads_v6 (8 vCPUs, 32 GiB) \u2014 medium workload",
+                    "value": "Standard_D8ads_v6"
+                  },
+                  {
+                    "label": "Standard_D16ads_v6 (16 vCPUs, 64 GiB) \u2014 large workload",
+                    "value": "Standard_D16ads_v6"
+                  },
+                  {
+                    "label": "Standard_D4s_v5 (4 vCPUs, 16 GiB) \u2014 Azure Commercial only",
+                    "value": "Standard_D4s_v5"
+                  },
+                  {
+                    "label": "Standard_D2s_v5 (2 vCPUs, 8 GiB) \u2014 Azure Commercial only",
+                    "value": "Standard_D2s_v5"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "clientImagePublisher",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Client Image Publisher",
+              "defaultValue": "MicrosoftWindowsDesktop",
+              "constraints": {
+                "required": true,
+                "allowedValues": [
+                  {
+                    "label": "MicrosoftWindowsDesktop",
+                    "value": "MicrosoftWindowsDesktop"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "clientImageOffer",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Client Image Offer",
+              "defaultValue": "windows-11",
+              "constraints": {
+                "required": true,
+                "allowedValues": [
+                  {
+                    "label": "Windows 11",
+                    "value": "windows-11"
+                  },
+                  {
+                    "label": "Windows 10",
+                    "value": "windows-10"
+                  }
+                ]
+              }
+            },
+            {
+              "name": "clientImageSku",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Client Image SKU",
+              "defaultValue": "win11-24h2-pro",
+              "toolTip": "Marketplace client image SKU. 24H2 is the current Windows 11 release and recommended for Azure Government.",
+              "constraints": {
+                "required": true,
+                "allowedValues": "[if(equals(steps('remoteAccess').clientImageOffer, 'windows-10'), parse('[{\"label\":\"Windows 10 Pro 22H2\",\"value\":\"win10-22h2-pro\"},{\"label\":\"Windows 10 Enterprise 22H2\",\"value\":\"win10-22h2-ent\"}]'), parse('[{\"label\":\"Windows 11 Pro 24H2 (recommended)\",\"value\":\"win11-24h2-pro\"},{\"label\":\"Windows 11 Enterprise 24H2\",\"value\":\"win11-24h2-ent\"},{\"label\":\"Windows 11 Pro 23H2\",\"value\":\"win11-23h2-pro\"},{\"label\":\"Windows 11 Enterprise 23H2\",\"value\":\"win11-23h2-ent\"}]'))]"
+              }
+            },
+            {
+              "name": "clientImageVersion",
+              "type": "Microsoft.Common.TextBox",
+              "label": "Client Image Version",
+              "defaultValue": "latest",
+              "toolTip": "Use 'latest' or provide a specific marketplace version.",
+              "constraints": {
+                "required": true
+              }
+            },
+            {
+              "name": "clientVmSize",
+              "type": "Microsoft.Common.DropDown",
+              "label": "Client VM Size",
+              "toolTip": "VM size for the 3 Windows client workstations. Standard_D4ads_v6 is recommended and available in Azure Government regions.",
+              "defaultValue": "Standard_D4ads_v6 (4 vCPUs, 16 GiB) \u2014 recommended",
+              "constraints": {
+                "required": true,
+                "allowedValues": [
+                  {
+                    "label": "Standard_D2ads_v6 (2 vCPUs, 8 GiB) \u2014 small lab / dev",
+                    "value": "Standard_D2ads_v6"
+                  },
+                  {
+                    "label": "Standard_D4ads_v6 (4 vCPUs, 16 GiB) \u2014 recommended",
+                    "value": "Standard_D4ads_v6"
+                  },
+                  {
+                    "label": "Standard_D8ads_v6 (8 vCPUs, 32 GiB) \u2014 larger workload",
+                    "value": "Standard_D8ads_v6"
+                  },
+                  {
+                    "label": "Standard_D4s_v5 (4 vCPUs, 16 GiB) \u2014 Azure Commercial only",
+                    "value": "Standard_D4s_v5"
+                  },
+                  {
+                    "label": "Standard_D2s_v5 (2 vCPUs, 8 GiB) \u2014 Azure Commercial only",
+                    "value": "Standard_D2s_v5"
+                  }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "tags",
+          "label": "Tags",
+          "elements": [
+            {
+              "name": "tags",
+              "type": "Microsoft.Common.TagsByResource",
+              "resources": [
+                "Microsoft.Compute/virtualMachines",
+                "Microsoft.Network/virtualNetworks",
+                "Microsoft.Network/azureFirewalls",
+                "Microsoft.Network/bastionHosts",
+                "Microsoft.Storage/storageAccounts",
+                "Microsoft.Sql/servers",
+                "Microsoft.ContainerRegistry/registries"
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "outputs": {
+      "kind": "Subscription",
+      "location": "[steps('basics').resourceScope.location.name]",
+      "subscriptionId": "[steps('basics').resourceScope.subscription.id]",
+      "parameters": {
+        "identifier": "[steps('basics').identifier]",
+        "environmentAbbreviation": "[steps('basics').environmentAbbreviation]",
+        "workloadName": "[steps('basics').workloadName]",
+        "workloadShortName": "[steps('basics').workloadShortName]",
+        "prefix": "[steps('basics').prefix]",
+        "deployBastion": "[steps('networking').deployBastion]",
+        "location": "[steps('basics').resourceScope.location.name]",
+        "deployActivityLogDiagnosticSetting": "[steps('securityCompliance').deployActivityLogDiagnosticSetting]",
+        "deployDefender": "[steps('securityCompliance').deployDefender]",
+        "deployDefenderCspm": "[steps('securityCompliance').deployDefenderCspm]",
+        "deployDefenderForServers": "[steps('securityCompliance').deployDefenderForServers]",
+        "defenderForServersSubPlan": "[if(steps('securityCompliance').deployDefenderForServers, steps('securityCompliance').defenderForServersSubPlan, 'P2')]",
+        "deployDefenderForStorage": "[steps('securityCompliance').deployDefenderForStorage]",
+        "deployDefenderForSql": "[steps('securityCompliance').deployDefenderForSql]",
+        "deployDefenderForContainers": "[steps('securityCompliance').deployDefenderForContainers]",
+        "deployDefenderForAppService": "[steps('securityCompliance').deployDefenderForAppService]",
+        "deployDefenderForKeyVault": "[steps('securityCompliance').deployDefenderForKeyVault]",
+        "deployDefenderForArm": "[steps('securityCompliance').deployDefenderForArm]",
+        "deployDefenderForDns": "[steps('securityCompliance').deployDefenderForDns]",
+        "deployDefenderForOssDb": "[steps('securityCompliance').deployDefenderForOssDb]",
+        "deployDefenderForCosmosDb": "[steps('securityCompliance').deployDefenderForCosmosDb]",
+        "deployDefenderForApis": "[steps('securityCompliance').deployDefenderForApis]",
+        "deployPolicy": "[steps('securityCompliance').deployPolicy]",
+        "deployNist80053": "[steps('securityCompliance').deployNist80053]",
+        "deployNist800171": "[steps('securityCompliance').deployNist800171]",
+        "deployIl5": "[steps('securityCompliance').deployIl5]",
+        "deploySentinel": "[steps('securityCompliance').deploySentinel]",
+        "emailSecurityContact": "[steps('securityCompliance').emailSecurityContact]",
+        "virtualNetworkAddressPrefix": "[steps('networking').virtualNetworkAddressPrefix]",
+        "subnetAddressPrefix": "[steps('networking').subnetAddressPrefix]",
+        "domainControllerPrivateIp": "[steps('networking').domainControllerPrivateIp]",
+        "adminUsername": "[steps('identity').adminUsername]",
+        "adminPassword": "[steps('identity').adminPassword.password]",
+        "safeModeAdminPassword": "[steps('identity').safeModeAdminPassword.password]",
+        "domainName": "[steps('identity').domainName]",
+        "domainNetbiosName": "[steps('identity').domainNetbiosName]",
+        "autoCreateEntraGroup": false,
+        "entraGroupName": "",
+        "entraLoginPrincipalId": "[steps('identity').entraGroupSelector]",
+        "entraPrincipalType": "Group",
+        "customWorkspaceName": "[if(and(steps('securityCompliance').deploySentinel, equals(steps('securityCompliance').workspaceOption, 'new')), steps('securityCompliance').newWorkspaceName, '')]",
+        "existingWorkspaceResourceId": "[if(and(steps('securityCompliance').deploySentinel, equals(steps('securityCompliance').workspaceOption, 'existing')), steps('securityCompliance').existingWorkspace.id, '')]",
+        "assignVmAdminRole": "[steps('identity').assignVmAdminRole]",
+        "assignVmUserRole": "[steps('identity').assignVmUserRole]",
+        "serverVmSize": "[steps('remoteAccess').serverVmSize]",
+        "clientVmSize": "[steps('remoteAccess').clientVmSize]",
+        "serverImagePublisher": "[steps('remoteAccess').serverImagePublisher]",
+        "serverImageOffer": "[steps('remoteAccess').serverImageOffer]",
+        "serverImageSku": "[steps('remoteAccess').serverImageSku]",
+        "serverImageVersion": "[steps('remoteAccess').serverImageVersion]",
+        "clientImagePublisher": "[steps('remoteAccess').clientImagePublisher]",
+        "clientImageOffer": "[steps('remoteAccess').clientImageOffer]",
+        "clientImageSku": "[steps('remoteAccess').clientImageSku]",
+        "clientImageVersion": "[steps('remoteAccess').clientImageVersion]",
+        "linuxVmSize": "Standard_D2ads_v6",
+        "cloudSuffix": "[steps('labOptions').cloudSuffix]",
+        "upnSuffix": "[steps('labOptions').upnSuffix]",
+        "labUserName": "[steps('labOptions').labUserName]",
+        "labUserPassword": "",
+        "deployLinuxVms": "[steps('labOptions').deployLinuxVms]",
+        "deployFirewallRules": "[steps('labOptions').deployFirewallRules]",
+        "allowAllAzureServiceTags": "[steps('labOptions').allowAllAzureServiceTags]",
+        "enableSentinelAnalytics": "[steps('labOptions').enableSentinelAnalytics]",
+        "deploySentinelContentScript": "[steps('labOptions').deploySentinelContentScript]",
+        "enableXdrConnector": true,
+        "usePrivateIngestion": false,
+        "deployArcPrivateLink": "[steps('labOptions').deployArcPrivateLink]",
+        "deployPrivateDnsResolver": "[steps('labOptions').deployPrivateDnsResolver]",
+        "resolverSubnetAddressPrefix": "10.60.0.128/28",
+        "mdeOnboardingBlob": "[steps('labOptions').mdeOnboardingBlob]",
+        "deployHydration": true,
+        "hydrationIntervalMinutes": "60",
+        "intuneCredentialType": "1",
+        "autoShutdownTime": "0300",
+        "autoShutdownTimeZone": "UTC",
+        "dnsForwarders": "168.63.129.16",
+        "ouRoot": "LAB"
+      }
+    }
+  }
+}
