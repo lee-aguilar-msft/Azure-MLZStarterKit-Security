@@ -410,6 +410,42 @@
     "enableXdrConnector": {
       "type": "bool",
       "defaultValue": true
+    },
+    "deployCspmKeyVault": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "CSPM coverage: deploy a Key Vault for Defender for Key Vault."
+      }
+    },
+    "deployCspmAppService": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "CSPM coverage: deploy an App Service plan (B1) + web app for Defender for App Service."
+      }
+    },
+    "deployCspmApiManagement": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "CSPM coverage: deploy API Management + a sample API for Defender for APIs."
+      }
+    },
+    "cspmApimSku": {
+      "type": "string",
+      "defaultValue": "Developer",
+      "allowedValues": [
+        "Developer",
+        "BasicV2",
+        "StandardV2",
+        "Basic",
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "API Management SKU for the CSPM sample. Developer works in all clouds (slow to provision); v2 tiers are fast where available."
+      }
     }
   },
   "variables": {
@@ -1388,7 +1424,8 @@
       "name": "[variables('cspmCoverageDeploymentName')]",
       "resourceGroup": "[variables('tier3ResourceGroupName')]",
       "dependsOn": [
-        "[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]"
+        "[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]",
+        "[resourceId('Microsoft.Security/pricings', 'Api')]"
       ],
       "properties": {
         "mode": "Incremental",
@@ -1422,6 +1459,27 @@
           },
           "customBlobContainerName": {
             "value": "[parameters('cspmBlobContainerName')]"
+          },
+          "deployKeyVault": {
+            "value": "[parameters('deployCspmKeyVault')]"
+          },
+          "deployAppService": {
+            "value": "[parameters('deployCspmAppService')]"
+          },
+          "deployApiManagement": {
+            "value": "[parameters('deployCspmApiManagement')]"
+          },
+          "apimSku": {
+            "value": "[parameters('cspmApimSku')]"
+          },
+          "apimPublisherEmail": {
+            "value": "[parameters('emailSecurityContact')]"
+          },
+          "apimPublisherName": {
+            "value": "[format('{0} security lab', parameters('prefix'))]"
+          },
+          "onboardApiToDefender": {
+            "value": "[and(parameters('deployDefender'), parameters('deployDefenderForApis'))]"
           }
         }
       }

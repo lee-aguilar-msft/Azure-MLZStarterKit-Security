@@ -61,8 +61,10 @@ An optional broad `AzureCloud` service-tag allow is included for lab convenience
 churning group membership, deliberate failed logons, Linux sudo/auth noise) on a schedule so the
 workspace and MDE always have material to hunt over.
 
-**CSPM coverage sample** — SQL DB, storage + container, ACR, and a nested-deployment sample so the
-Defender for Cloud plans have resources to assess.
+**CSPM coverage sample** — SQL DB, storage + container, ACR, **Key Vault**, **App Service (B1 plan + web
+app)**, **API Management + a sample API** (optionally onboarded to Defender for APIs), and a
+nested-deployment sample — so Defender for SQL, Storage, Containers, Key Vault, App Service, APIs and
+Resource Manager each have a resource to assess. Each piece is a toggle (`deployCspm*`).
 
 ---
 
@@ -137,15 +139,6 @@ It enables the Sentinel content/analytics/UEBA, then prints the checklist for:
 
 ---
 
-## Testing with the Claude browser plugin
-
-The lab is designed to be driven and verified hands-on in a signed-in GCC High browser session using
-the Claude for Chrome plugin against `portal.azure.us`, `security.microsoft.us`, `intune.microsoft.us`
-and `purview.microsoft.us`. Passwords are always typed by you; the automation clicks by element
-reference and uses the VM **Run command** blade where the Cloud Shell terminal won't hold focus.
-
----
-
 ## Prerequisites
 
 Run once per subscription in Cloud Shell (PowerShell), in the target cloud:
@@ -163,6 +156,10 @@ az provider register --namespace Microsoft.HybridCompute
 az provider register --namespace Microsoft.Network
 # Inline Sentinel content script only (if deploySentinelContentScript = true)
 az provider register --namespace Microsoft.ContainerInstance
+# CSPM coverage samples (API Management, App Service, Key Vault)
+az provider register --namespace Microsoft.ApiManagement
+az provider register --namespace Microsoft.Web
+az provider register --namespace Microsoft.KeyVault
 
 # Wait until EncryptionAtHost shows Registered
 az feature show --name EncryptionAtHost --namespace Microsoft.Compute --query "properties.state" -o tsv
@@ -205,7 +202,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lee-aguilar-msft/Azure
 | `templates/ad-entra-vms.json` | DCs, member servers, Windows clients, Linux trio, Entra login, AMA, MDE, auto-shutdown, run-command automation. |
 | `templates/security-lab.json` | Sentinel onboarding, DCRs + associations, optional content/analytics/UEBA deploymentScript. |
 | `templates/arc-private-link.json` | Arc Private Link Scope, private endpoint, Arc private DNS zones, optional Private DNS Resolver. |
-| `templates/cspm-coverage.json` | SQL/Storage/ACR/nested-deployment sample for Defender coverage. |
+| `templates/cspm-coverage.json` | SQL/Storage/ACR/Key Vault/App Service/API Management + nested-deployment samples for Defender coverage. |
 | `templates/scripts/*.ps1 / *.sh` | Promotion, join, Windows/Linux configuration, hydration, Sentinel content, hybrid-join, post-deploy. |
 | `.github/workflows/rebuild-lab.yml` | 90-day OIDC rebuild pipeline. |
 | `build/*.py` | Generators/validator used to assemble and lint the templates (dev-time only). |
@@ -222,5 +219,8 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lee-aguilar-msft/Azure
 - **MDI** (Defender for Identity) sensors are intentionally **out of scope** — installed separately.
 - SLES/RHEL/Ubuntu use PAYG marketplace images; if your subscription requires a plan acceptance for a
   given image, accept it (or adjust the image reference) before deploying.
+- The CSPM API Management sample defaults to the **Developer** SKU (works in Azure Government; ~30–45 min
+  to provision, ~$50/mo). Set `cspmApimSku` to `BasicV2`/`StandardV2` for minutes-fast provisioning where
+  those tiers are available, or `deployCspmApiManagement = false` to skip it.
 - The Arc Private Link Scope uses a preview API version; keep `deployArcPrivateLink = false` if your
   subscription/region doesn't expose it yet.
