@@ -173,6 +173,28 @@ if (-not $Force) {
 }
 
 # ---------------------------------------------------------------------------
+# 0. Hard-delete soft-delete-capable resources so a redeploy with the same
+#    names is clean: Log Analytics workspaces (otherwise soft-deleted for 14
+#    days and silently *recovered* by the next deployment, Sentinel state and
+#    all) and Key Vaults (otherwise a name collision on redeploy).
+# ---------------------------------------------------------------------------
+$vaultsToPurge = @()
+if ($discoveredRgs.Count -gt 0) {
+    Write-Host "`n[0/4] Force-deleting Log Analytics workspaces and collecting Key Vaults..." -ForegroundColor Cyan
+    foreach ($rg in $discoveredRgs) {
+        $laws = @(az monitor log-analytics workspace list -g $rg --query "[].name" -o tsv 2>$null)
+        foreach ($law in $laws) {
+            if ($law) {
+                Write-Host "  Permanently deleting workspace $law ($rg)" -ForegroundColor Yellow
+                az monitor log-analytics workspace delete -g $rg -n $law --force true --yes 2>$null | Out-Null
+            }
+        }
+        $kvs = @(az keyvault list -g $rg --query "[].name" -o tsv 2>$null)
+        foreach ($kv in $kvs) { if ($kv) { $vaultsToPurge += $kv } }
+    }
+}
+
+# ---------------------------------------------------------------------------
 # 1. Delete resource groups in parallel
 # ---------------------------------------------------------------------------
 Write-Host "`n[1/4] Deleting resource groups..." -ForegroundColor Cyan
@@ -193,6 +215,12 @@ if ($jobs.Count -gt 0) {
     Write-Host "  All resource group deletions completed." -ForegroundColor Green
 } else {
     Write-Host "  No resource groups to delete." -ForegroundColor Gray
+}
+
+# Purge the soft-deleted Key Vaults now that their resource groups are gone
+foreach ($kv in $vaultsToPurge) {
+    Write-Host "  Purging soft-deleted Key Vault $kv" -ForegroundColor Yellow
+    az keyvault purge --name $kv --location $Location 2>$null | Out-Null
 }
 
 # ---------------------------------------------------------------------------
