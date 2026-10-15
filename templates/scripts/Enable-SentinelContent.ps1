@@ -11,9 +11,9 @@
   current Az context token so it works in both AzureCloud and AzureUSGovernment.
 
   Method (proven on the RoadRunner commercial lab, ~170 rules enabled):
-    1. GET contentProductPackages, register the requested solutions via PUT contentPackages/<id>
-       (writable properties only), then deploy each solution's packagedContent ARM template to the
-       workspace resource group - that is what creates the data-connector definitions and templates.
+    1. GET contentProductPackages, then deploy each requested solution's packagedContent ARM template
+       to the workspace resource group - that creates the package record, the data-connector
+       definition and the analytics/workbook/playbook templates (what the portal's Install does).
     2. GET alertRuleTemplates, keep Scheduled/NRT templates whose requiredDataConnectors match the
        target connector set, PUT alertRules/<new-guid> with enabled:true.
     3. PUT settings/EntityAnalytics and settings/Ueba to enable UEBA over the chosen data sources.
@@ -80,40 +80,45 @@ function Invoke-Arm {
 }
 
 $wsLocation = (Get-AzOperationalInsightsWorkspace -ResourceGroupName $ResourceGroupName -Name $WorkspaceName).Location
+function Invoke-ArmList {
+  # GET a collection and follow nextLink pages
+  param([string]$Uri)
+  $all = @(); $next = $Uri
+  while ($next) { $page = Invoke-Arm GET $next; $all += @($page.value); $next = if ($page.PSObject.Properties.Name -contains 'nextLink') { $page.nextLink } else { $null } }
+  return $all
+}
+
 Write-Output "ARM endpoint: $arm"
 Write-Output "Workspace   : $WorkspaceName ($ResourceGroupName, $wsLocation)"
 
 # ================= 1. Install content hub solutions =================
 Write-Output '--- Installing Content Hub solutions ---'
 $pkgUri = "$base/contentProductPackages?api-version=$apiContent"
-$packages = (Invoke-Arm GET $pkgUri).value
+$packages = Invoke-ArmList $pkgUri
 Write-Output "Found $($packages.Count) content packages in the catalog."
 
 foreach ($want in $Solutions) {
   # Catalog contentIds are publisher-prefixed (e.g. azuresentinel.azure-sentinel-solution-azureactivedirectory)
   $pkg = $packages | Where-Object { $_.properties.contentId -eq $want -or $_.properties.contentId -like "*.$want" -or $_.name -eq $want } | Select-Object -First 1
   if (-not $pkg) { Write-Warning "Solution '$want' not found in catalog (skipping)."; continue }
-  # The package id in the PUT path is the catalog item's name (publisher-prefixed contentId).
+  # Catalog item name = contentProductId (e.g. ...-sl-xptjiwh6w32o6); contentId = azuresentinel.azure-sentinel-solution-x
   $pkgId = $pkg.name
-  $installUri = "$base/contentPackages/$pkgId`?api-version=$apiContent"
-  # Only send the writable package properties - the catalog GET returns read-only fields
-  # (installedVersion, metadataResourceId, ...) that the PUT rejects with 400.
   $pp = $pkg.properties
-  $installBody = @{ properties = [ordered]@{} }
-  foreach ($prop in 'contentId', 'contentProductId', 'contentKind', 'contentSchemaVersion', 'version',
-    'displayName', 'publisherDisplayName', 'description', 'providers', 'firstPublishDate', 'lastPublishDate',
-    'source', 'author', 'support', 'dependencies', 'categories', 'icon', 'isNew', 'isPreview', 'isFeatured',
-    'isDeprecated') {
-    if ($pp.PSObject.Properties.Name -contains $prop -and $null -ne $pp.$prop) { $installBody.properties[$prop] = $pp.$prop }
-  }
-  try {
-    Invoke-Arm PUT $installUri $installBody | Out-Null
-    Write-Output "Installed: $($pp.displayName) [$pkgId]"
-  } catch { Write-Warning "Install failed for $want : $($_.Exception.Message)"; continue }
+  $contentId = $pp.contentId
 
-  # Registering the package only marks it 'Installed' in Content Hub. The solution's content items
-  # (data connector definition, analytics/workbook/playbook templates) come from its packaged ARM
-  # template - deploying it is exactly what the portal's Install button does.
+  # A solution is installed by deploying its packaged ARM template (what the portal's Install button
+  # does). The template creates the Microsoft.SecurityInsights/contentPackages record itself, plus the
+  # data-connector definition and the analytics/workbook/playbook templates. Registering the package
+  # by a plain PUT contentPackages/<id> only flips the Content Hub status and then blocks the template
+  # with "contentId ... is already associated with another package", so remove any such record first.
+  try {
+    $installed = (Invoke-Arm GET "$base/contentPackages?api-version=$apiContent").value
+    foreach ($stale in ($installed | Where-Object { $_.properties.contentId -eq $contentId -and $_.name -ne $contentId })) {
+      Write-Output "  removing stale package record $($stale.name)"
+      Invoke-Arm DELETE "$base/contentPackages/$($stale.name)?api-version=$apiContent" | Out-Null
+    }
+  } catch { Write-Warning "Could not inspect installed packages: $($_.Exception.Message)" }
+
   try {
     $detail = Invoke-Arm GET "$base/contentProductPackages/$pkgId`?api-version=$apiContent"
     if (-not ($detail.properties.PSObject.Properties.Name -contains 'packagedContent') -or -not $detail.properties.packagedContent) {
@@ -129,8 +134,8 @@ foreach ($want in $Solutions) {
     $short = $want -replace '^azure-sentinel-solution-', ''
     $depName = ('sentinel-' + $short.Substring(0, [Math]::Min(30, $short.Length)) + '-' + (Get-Date -Format 'yyyyMMddHHmm'))
     New-AzResourceGroupDeployment -Name $depName -ResourceGroupName $ResourceGroupName -TemplateFile $tplFile -TemplateParameterObject $tplParams -ErrorAction Stop | Out-Null
-    Write-Output "  content deployed: $($pp.displayName) (deployment $depName)"
-  } catch { Write-Warning "Content deployment for $want failed: $($_.Exception.Message)" }
+    Write-Output "Installed: $($pp.displayName) [$contentId] via deployment $depName"
+  } catch { Write-Warning "Install of $want failed: $($_.Exception.Message)" }
 }
 
 Start-Sleep -Seconds 30   # let template records populate
@@ -138,7 +143,7 @@ Start-Sleep -Seconds 30   # let template records populate
 # ================= 2. Enable matching analytics rule templates =================
 Write-Output '--- Enabling analytics rule templates ---'
 $tplUri = "$base/alertRuleTemplates?api-version=$apiRules"
-$templates = (Invoke-Arm GET $tplUri).value
+$templates = Invoke-ArmList $tplUri
 Write-Output "Catalog has $($templates.Count) alert rule templates."
 
 $wanted = $templates | Where-Object {
@@ -151,8 +156,22 @@ $seen = @{}; $unique = @()
 foreach ($t in $wanted) { $dn = $t.properties.displayName; if (-not $seen.ContainsKey($dn)) { $seen[$dn] = $true; $unique += $t } }
 Write-Output "Matched $($unique.Count) unique Scheduled/NRT templates for connectors: $($ConnectorIds -join ', ')"
 
-$enabled = 0; $failed = 0
+# Idempotency: rules already created from a template are skipped, and if an earlier run was
+# interrupted and left duplicates (same template, several rule ids) the extras are removed.
+$existingRules = Invoke-ArmList "$base/alertRules?api-version=$apiRules"
+$haveTemplate = @{}; $dupes = 0
+foreach ($r in $existingRules) {
+  $tn = if ($r.properties.PSObject.Properties.Name -contains 'alertRuleTemplateName') { $r.properties.alertRuleTemplateName } else { $null }
+  if (-not $tn) { continue }
+  if ($haveTemplate.ContainsKey($tn)) {
+    try { Invoke-Arm DELETE "$base/alertRules/$($r.name)?api-version=$apiRules" | Out-Null; $dupes++ } catch { }
+  } else { $haveTemplate[$tn] = $true }
+}
+Write-Output "Existing rules: $($existingRules.Count) (duplicates removed: $dupes)"
+
+$enabled = 0; $failed = 0; $skipped = 0
 foreach ($t in $unique) {
+  if ($haveTemplate.ContainsKey($t.name)) { $skipped++; continue }
   $p = $t.properties
   $guid = [guid]::NewGuid().ToString()
   $ruleUri = "$base/alertRules/$guid`?api-version=$apiRules"
@@ -172,7 +191,7 @@ foreach ($t in $unique) {
   try { Invoke-Arm PUT $ruleUri $body | Out-Null; $enabled++ }
   catch { $failed++; Write-Warning "Rule '$($p.displayName)' failed: $($_.Exception.Message)" }
 }
-Write-Output "Analytics rules enabled: $enabled (failed/skipped: $failed)"
+Write-Output "Analytics rules enabled: $enabled new, $skipped already present, $failed templates rejected by the service"
 
 # ================= 3. Entity Behavior Analytics (UEBA) =================
 if ($SkipUeba) { Write-Output '--- UEBA enablement skipped (-SkipUeba) ---' }
