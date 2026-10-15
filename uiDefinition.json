@@ -417,8 +417,8 @@
               "type": "Microsoft.Common.TextBox",
               "label": "New workspace name",
               "visible": "[and(steps('securityCompliance').deploySentinel, equals(steps('securityCompliance').workspaceOption, 'new'))]",
-              "defaultValue": "[concat('law-', steps('basics').workloadShortName)]",
-              "toolTip": "Name for the new Log Analytics workspace. Will be created in the workload tier3 resource group alongside the VMs.",
+              "defaultValue": "[concat('law-', steps('basics').workloadShortName, '-', utcNow('MMdd'))]",
+              "toolTip": "Name for the new Log Analytics workspace (created in the tier-3 resource group). Use a name that no earlier, deleted Sentinel workspace in this subscription used: Sentinel keeps the old workspace id for a while and rejects analytics rules on a re-created workspace with the same name.",
               "placeholder": "e.g. law-adlab",
               "constraints": {
                 "required": "[and(steps('securityCompliance').deploySentinel, equals(steps('securityCompliance').workspaceOption, 'new'))]",

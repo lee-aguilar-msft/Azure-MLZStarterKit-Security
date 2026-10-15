@@ -185,6 +185,15 @@ if ($discoveredRgs.Count -gt 0) {
         $laws = @(az monitor log-analytics workspace list -g $rg --query "[].name" -o tsv 2>$null)
         foreach ($law in $laws) {
             if ($law) {
+                # Offboard Microsoft Sentinel first. Deleting a Sentinel workspace without offboarding leaves the
+                # Sentinel back end mapped to the old workspace id; a redeploy with the same name then rejects every
+                # analytics rule with "Log Analytics workspace '<old id>' could not be found".
+                $wsId = "/subscriptions/$SubscriptionId/resourceGroups/$rg/providers/Microsoft.OperationalInsights/workspaces/$law"
+                $onb = az rest --method get --url "$wsId/providers/Microsoft.SecurityInsights/onboardingStates/default?api-version=2024-03-01" 2>$null
+                if ($LASTEXITCODE -eq 0 -and $onb) {
+                    Write-Host "  Offboarding Microsoft Sentinel from $law" -ForegroundColor Yellow
+                    az rest --method delete --url "$wsId/providers/Microsoft.SecurityInsights/onboardingStates/default?api-version=2024-03-01" -o none 2>$null
+                }
                 Write-Host "  Permanently deleting workspace $law ($rg)" -ForegroundColor Yellow
                 az monitor log-analytics workspace delete -g $rg -n $law --force true --yes 2>$null | Out-Null
             }
