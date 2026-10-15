@@ -4,7 +4,7 @@ param (
   [Parameter(Mandatory = $true)] [string]$DomainAdminPassword,
   [Parameter(Mandatory = $true)] [string]$DomainControllerIp,
   [string]$OUPath = '',
-  [int]$RetryCount = 60
+  [int]$RetryCount = 150   # x 20 s = 50 min: covers DC promotion + reboot (the join is what waits for it)
 )
 
 $ErrorActionPreference = 'Stop'
@@ -18,7 +18,9 @@ if ($cs.PartOfDomain -and $cs.Domain -ieq $DomainName) {
   exit 0
 }
 
-# Wait for LDAP and for DNS to answer for the domain (the DC NIC is also the resolver for this VM)
+# Wait for LDAP and for DNS to answer for the domain (the DC NIC is also the resolver for this VM).
+# Both only answer after the DC has finished promotion AND rebooted, so this loop is the gate that
+# sequences the whole forest build.
 for ($i = 1; $i -le $RetryCount; $i++) {
   $ldap = Test-NetConnection -ComputerName $DomainControllerIp -Port 389 -InformationLevel Quiet -WarningAction SilentlyContinue
   $dns = $false

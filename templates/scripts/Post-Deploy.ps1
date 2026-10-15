@@ -14,7 +14,9 @@ param(
   [Parameter(Mandatory = $true)] [string]$WorkspaceName,
   [switch]$EnableXdrConnector,
   [switch]$SkipSentinelContent,
-  [string]$DefenderForServersPlan = 'P2'   # '' to leave the plan alone
+  [string]$DefenderForServersPlan = 'P2',  # '' to leave the plan alone
+  [switch]$PrepareTenant,                   # also run Prepare-Tenant.ps1 (Intune MDM URLs/scope, Intune Enrollment SP, CA report)
+  [ValidateSet('USGov', 'USGovDoD', 'Global')] [string]$Cloud = 'USGov'
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -42,27 +44,28 @@ if ($DefenderForServersPlan) {
 }
 az security pricing list --query "value[?pricingTier=='Standard'].{plan:name,tier:pricingTier,subPlan:subPlan}" -o table
 
-Write-Host "`n[2/3] Break-glass + Conditional Access checklist (manual, needs Global Admin + MFA):" -ForegroundColor Yellow
-@'
-  1. Create a cloud-only break-glass Global Admin and store its credentials offline.
-     Exclude it from ALL Conditional Access policies. (Do this BEFORE enabling Entra Connect sync.)
-  2. Ensure a Conditional Access policy that would block interactive MDM enrollment EXCLUDES the
-     "Microsoft Intune Enrollment" app (d4ebce55-015a-49b5-a083-c84d1797ae8c). In GCC High the app
-     may need its service principal created first:
-       Connect-MgGraph -Environment USGov -Scopes Application.ReadWrite.All
-       New-MgServicePrincipal -AppId d4ebce55-015a-49b5-a083-c84d1797ae8c
-     (AADSTS50076 / interaction_required on silent enrollment = this exclusion is missing.)
-  3. Assign the lab user an Entra ID P1/P2 + Intune license so auto-enrollment can proceed.
-'@ | Write-Host
+if ($PrepareTenant) {
+  Write-Host "`n[2/3] Tenant preparation for hybrid join + Intune (Prepare-Tenant.ps1, device-code sign-in)..." -ForegroundColor Cyan
+  & (Join-Path $here 'Prepare-Tenant.ps1') -Cloud $Cloud
+} else {
+  Write-Host "`n[2/3] Tenant preparation (run once per tenant):" -ForegroundColor Yellow
+  Write-Host "  ./Prepare-Tenant.ps1 -Cloud $Cloud   # Intune MDM URLs (.us in GCC High) + MDM scope, Intune Enrollment SP, CA report"
+}
 
-Write-Host "`n[3/3] Entra Connect + hybrid join (on the ms01 member server, via Bastion):" -ForegroundColor Yellow
+Write-Host "`n[3/3] The one interactive step - Microsoft Entra Connect on <prefix>-ms01 (needs your MFA):" -ForegroundColor Yellow
 @'
-  1. RDP to <prefix>-ms01 through Bastion with your Entra account.
-  2. Configure Microsoft Entra Connect (installer is pre-staged at C:\LabTools\AzureADConnect.msi):
-       Password Hash Sync, OU filter = the lab root OU only, Hybrid Entra join enabled.
-  3. After the first sync, run the hybrid-join cycle for each client:
-       Invoke-HybridJoinCycle.ps1  (writes device cert -> delta sync -> re-join)
-  4. Verify on a client:  dsregcmd /status   (want AzureAdJoined: YES, AzureAdPrt: YES)
+  0. Break-glass first: a cloud-only Global Admin, excluded from all Conditional Access policies.
+  1. Bastion -> <prefix>-ms01 -> RDP with CORP\<admin> (the AD admin from the deployment form).
+  2. Start "Microsoft Entra Connect" (already installed) -> Customize -> Password Hash Synchronization.
+  3. Sign in to Entra with a Hybrid Identity / Global Admin (MFA). Add the forest with CORP\<admin>.
+  4. Domain/OU filtering: the lab root OU only. Device options: nothing to do - the deployment already
+     wrote the hybrid-join Service Connection Point (re-running "Configure Hybrid join" is harmless).
+  5. Finish with "Start the synchronization process".
+  After the first sync everything else is automatic: the clients retry hybrid join every 30 min
+  (LAB-HybridJoin-Retry) and Intune auto-enrollment hourly (LAB-IntuneAutoEnroll-Retry) for 7 days.
+  Sign in once to a client as the synced lab user so the user-credential enrollment has a PRT.
+  To speed it up: C:\LabTools\Invoke-HybridJoinCycle.ps1 -ClientNames <prefix>-cl01,<prefix>-cl02,<prefix>-cl03
+  Then: ./Prepare-Tenant.ps1 -Cloud <cloud> -LabUserUpn <lab user UPN>   # license the synced user
 '@ | Write-Host
 
 Write-Host "`nPost-deploy orchestration complete." -ForegroundColor Green

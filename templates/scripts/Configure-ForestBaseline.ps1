@@ -12,7 +12,11 @@ param (
   [string]$CreateIntuneGpo = 'true',
   [string]$MdeOnboardingBlob = '',                           # raw onboarding JSON (from WindowsDefenderATPOnboardingScript.cmd); optional
   [string]$HydrationScriptBase64 = '',
-  [string]$HydrationIntervalMinutes = '60'
+  [string]$HydrationIntervalMinutes = '60',
+  [string]$TenantId = '',                                    # Entra tenant ID -> hybrid-join SCP
+  [string]$TenantDomain = '',                                # verified Entra domain -> hybrid-join SCP (defaults to UpnSuffix)
+  [string]$ServerComputers = '',                             # comma list of member-server computer names -> OU=MemberServers
+  [string]$WorkstationComputers = ''                         # comma list of client computer names -> OU=Workstations
 )
 
 $ErrorActionPreference = 'Stop'
@@ -75,6 +79,43 @@ $ouAdmins         = Ensure-OU -Name 'Admins'          -Path $rootOu
 # Redirect default containers so joined machines/users land in managed OUs
 try { & redircmp.exe $ouWorkstations | Out-Null } catch { Write-Warning "redircmp: $($_.Exception.Message)" }
 try { & redirusr.exe $ouUsers        | Out-Null } catch { Write-Warning "redirusr: $($_.Exception.Message)" }
+
+# The members join the default Computers container (the baseline runs after the joins so it is never
+# interrupted by the DC promotion reboot); place them in their OUs here so the OU-linked GPOs apply.
+function Move-LabComputers {
+  param([string]$Names, [string]$TargetOu)
+  foreach ($n in ($Names.Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
+    $c = Get-ADComputer -Filter "Name -eq '$n'" -ErrorAction SilentlyContinue
+    if (-not $c) { Write-Warning "Computer $n not found in AD (join failed?)"; continue }
+    if ($c.DistinguishedName -notlike "*,$TargetOu") {
+      Move-ADObject -Identity $c.DistinguishedName -TargetPath $TargetOu
+      Write-Output "Moved $n -> $TargetOu"
+    }
+  }
+}
+Move-LabComputers -Names $ServerComputers -TargetOu $ouMemberServers
+Move-LabComputers -Names $WorkstationComputers -TargetOu $ouWorkstations
+
+# --- Hybrid Microsoft Entra join: Service Connection Point -------------------------------------------
+# Same object the Entra Connect wizard's "Configure Hybrid Microsoft Entra join" page writes. With it in
+# place the clients discover the tenant on their own; Entra Connect only has to sync the device objects.
+$scpDomain = if ($TenantDomain) { $TenantDomain } else { $UpnSuffix }
+if ($TenantId -and $scpDomain) {
+  $configNc = (Get-ADRootDSE).configurationNamingContext
+  $drcDn = "CN=Device Registration Configuration,CN=Services,$configNc"
+  if (-not (Get-ADObject -Filter "distinguishedName -eq '$drcDn'" -SearchBase "CN=Services,$configNc" -ErrorAction SilentlyContinue)) {
+    New-ADObject -Name 'Device Registration Configuration' -Type container -Path "CN=Services,$configNc"
+  }
+  $scpName = '62a0ff2e-97b9-4513-943f-0d221bd30080'
+  $scpDn = "CN=$scpName,$drcDn"
+  $keywords = @("azureADName:$scpDomain", "azureADId:$TenantId")
+  if (Get-ADObject -Filter "distinguishedName -eq '$scpDn'" -SearchBase $drcDn -ErrorAction SilentlyContinue) {
+    Set-ADObject -Identity $scpDn -Replace @{ keywords = $keywords }
+  } else {
+    New-ADObject -Name $scpName -Type serviceConnectionPoint -Path $drcDn -OtherAttributes @{ keywords = $keywords }
+  }
+  Write-Output "Hybrid join SCP: azureADName=$scpDomain azureADId=$TenantId"
+} else { Write-Warning 'TenantId/TenantDomain not supplied - hybrid join SCP not written (Entra Connect wizard will write it).' }
 
 # --- UPN suffix (lets synced users keep a routable UPN that matches a verified Entra domain) ---
 if ($UpnSuffix -and $UpnSuffix -ine $DomainName) {
@@ -152,9 +193,9 @@ if ($CreateIntuneGpo -ieq 'true') {
   $mdmKey = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\MDM'
   Set-GPRegistryValue -Name $gpo.DisplayName -Key $mdmKey -ValueName 'AutoEnrollMDM' -Type DWord -Value 1 | Out-Null
   Set-GPRegistryValue -Name $gpo.DisplayName -Key $mdmKey -ValueName 'UseAADCredentialType' -Type DWord -Value ([int]$IntuneCredentialType) | Out-Null
-  # GCC High / DoD note: the MDM enrollment URLs come from the Entra "Microsoft Intune" mobility
-  # configuration (enrollment.manage.microsoft.us). Entra Connect writes the Gov SCP; nothing else
-  # is needed here. $EnrollmentUrlSuffix is recorded for the verification script.
+  # GCC High / DoD note: the MDM enrollment URLs come from the tenant's "Microsoft Intune" mobility
+  # (MDM) configuration, which must point at the .us endpoints (Prepare-Tenant.ps1 sets them).
+  # $EnrollmentUrlSuffix is recorded for the verification script.
   Set-Content -Path 'C:\LabTools\cloud-suffix.txt' -Value $EnrollmentUrlSuffix
   Write-Output "Intune auto-enrollment GPO linked to $ouWorkstations (credential type $IntuneCredentialType)"
 }

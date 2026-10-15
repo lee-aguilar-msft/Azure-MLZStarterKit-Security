@@ -67,13 +67,14 @@ if ($Role -eq 'Workstation') {
   # writes its certificate to the AD computer object immediately (the sync-join needs an Entra Connect
   # delta sync afterwards — see docs/RUNBOOK.md "Hybrid join recipe").
   try { Start-ScheduledTask -TaskPath '\Microsoft\Windows\Workplace Join\' -TaskName 'Automatic-Device-Join' -ErrorAction Stop } catch {}
-  # Re-run the join attempt a few times over the first hours (covers the "delta sync then join again" cycle)
+  # Re-run the join every 30 min for 7 days: once Entra Connect is configured (the only manual step) and
+  # has synced the device, the next attempt completes hybrid join with no further action.
   $joinAction = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c dsregcmd /join >> C:\LabTools\dsregcmd-join.log 2>&1'
-  $joinTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(10) -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Hours 12)
+  $joinTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(10) -RepetitionInterval (New-TimeSpan -Minutes 30) -RepetitionDuration (New-TimeSpan -Days 7)
   Register-ScheduledTask -TaskName 'LAB-HybridJoin-Retry' -Action $joinAction -Trigger $joinTrigger -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
   # MDM auto-enrollment retry (the GPO creates the EnterpriseMgmt task only at the next policy refresh)
   $mdmAction = New-ScheduledTaskAction -Execute 'cmd.exe' -Argument '/c gpupdate /target:computer /force & %windir%\system32\deviceenroller.exe /c /AutoEnrollMDM >> C:\LabTools\autoenroll.log 2>&1'
-  $mdmTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(20) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Hours 24)
+  $mdmTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(20) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 7)
   Register-ScheduledTask -TaskName 'LAB-IntuneAutoEnroll-Retry' -Action $mdmAction -Trigger $mdmTrigger -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
   Write-Output 'Hybrid-join and Intune auto-enroll retry tasks registered'
 }
