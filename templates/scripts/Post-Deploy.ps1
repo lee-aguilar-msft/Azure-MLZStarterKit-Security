@@ -23,9 +23,10 @@ az account set --subscription $SubscriptionId | Out-Null
 
 if (-not $SkipSentinelContent) {
   Write-Host "`n[1/3] Enabling Sentinel Content Hub solutions, analytics rules and UEBA..." -ForegroundColor Cyan
-  $args = @('-SubscriptionId', $SubscriptionId, '-ResourceGroupName', $ResourceGroupName, '-WorkspaceName', $WorkspaceName)
-  if ($EnableXdrConnector) { $args += '-EnableXdrConnector' }
-  & (Join-Path $here 'Enable-SentinelContent.ps1') @args
+  # hashtable splat (an array splat passes switches positionally; $args is also a PowerShell automatic variable)
+  $contentParams = @{ SubscriptionId = $SubscriptionId; ResourceGroupName = $ResourceGroupName; WorkspaceName = $WorkspaceName }
+  if ($EnableXdrConnector) { $contentParams['EnableXdrConnector'] = $true }
+  & (Join-Path $here 'Enable-SentinelContent.ps1') @contentParams
 }
 
 Write-Host "`n[2/3] Break-glass + Conditional Access checklist (manual, needs Global Admin + MFA):" -ForegroundColor Yellow

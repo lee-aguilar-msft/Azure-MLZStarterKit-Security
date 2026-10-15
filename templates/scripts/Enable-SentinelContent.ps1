@@ -53,7 +53,9 @@ $ctx = (Get-AzContext)
 if (-not $ctx) { Connect-AzAccount -Subscription $SubscriptionId | Out-Null; $ctx = Get-AzContext }
 Set-AzContext -Subscription $SubscriptionId | Out-Null
 $arm = $ctx.Environment.ResourceManagerUrl.TrimEnd('/')
-$token = (Get-AzAccessToken -ResourceUrl $ctx.Environment.ResourceManagerUrl).Token
+$tok = Get-AzAccessToken -ResourceUrl $ctx.Environment.ResourceManagerUrl
+# Az.Accounts 4+ (Cloud Shell today) returns the token as a SecureString; older modules return plain text
+$token = if ($tok.Token -is [System.Security.SecureString]) { [System.Net.NetworkCredential]::new('', $tok.Token).Password } else { $tok.Token }
 $headers = @{ Authorization = "Bearer $token"; 'Content-Type' = 'application/json' }
 $base = "$arm/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.OperationalInsights/workspaces/$WorkspaceName/providers/Microsoft.SecurityInsights"
 $apiContent = '2024-03-01'
@@ -83,7 +85,8 @@ $packages = (Invoke-Arm GET $pkgUri).value
 Write-Output "Found $($packages.Count) content packages in the catalog."
 
 foreach ($want in $Solutions) {
-  $pkg = $packages | Where-Object { $_.properties.contentId -eq $want -or $_.name -eq $want } | Select-Object -First 1
+  # Catalog contentIds are publisher-prefixed (e.g. azuresentinel.azure-sentinel-solution-azureactivedirectory)
+  $pkg = $packages | Where-Object { $_.properties.contentId -eq $want -or $_.properties.contentId -like "*.$want" -or $_.name -eq $want } | Select-Object -First 1
   if (-not $pkg) { Write-Warning "Solution '$want' not found in catalog (skipping)."; continue }
   $installUri = "$base/contentPackages/$($pkg.properties.contentId)?api-version=$apiContent"
   try {
@@ -102,6 +105,7 @@ Write-Output "Catalog has $($templates.Count) alert rule templates."
 
 $wanted = $templates | Where-Object {
   $_.kind -in @('Scheduled', 'NRT') -and
+  ($_.properties.PSObject.Properties.Name -contains 'requiredDataConnectors') -and   # some templates have none (StrictMode-safe)
   ($_.properties.requiredDataConnectors | Where-Object { $_.connectorId -in $ConnectorIds })
 }
 # De-dup on display name (several solutions ship the same template)
