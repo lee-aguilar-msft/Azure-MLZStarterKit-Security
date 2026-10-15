@@ -203,7 +203,7 @@
       "apiVersion": "2022-06-01",
       "name": "[variables('linuxDcrName')]",
       "location": "[parameters('location')]",
-      "condition": "[not(empty(parameters('linuxVmNames')))]",
+      "condition": "[not(empty(variables('lnxNames')))]",
       "dependsOn": [
         "[variables('workspaceResourceId')]",
         "[resourceId('Microsoft.Insights/dataCollectionEndpoints', variables('dceName'))]"
