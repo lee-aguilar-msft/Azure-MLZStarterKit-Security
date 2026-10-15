@@ -62,7 +62,7 @@ function Ensure-OU {
   $ouDn = "OU=$Name,$Path"
   if (-not (Get-ADOrganizationalUnit -LDAPFilter "(distinguishedName=$ouDn)" -SearchBase $Path -SearchScope OneLevel -ErrorAction SilentlyContinue)) {
     New-ADOrganizationalUnit -Name $Name -Path $Path -ProtectedFromAccidentalDeletion $false | Out-Null
-    Write-Output "Created OU $ouDn"
+    Write-Host "Created OU $ouDn"   # Write-Host: Write-Output would become part of the return value
   }
   return $ouDn
 }
@@ -153,13 +153,13 @@ foreach ($g in $groups) {
 
 # --- Lab user (CREATED ENABLED — lesson from the SDL lockout incident) ----------------------------
 if ($LabUserName) {
-  $pwd = if ($LabUserPassword) { $LabUserPassword } else { 'L@b' + [guid]::NewGuid().ToString('N').Substring(0, 14) + '!' }
+  $labPwd = if ($LabUserPassword) { $LabUserPassword } else { 'L@b' + [guid]::NewGuid().ToString('N').Substring(0, 14) + '!' }
   $upn = if ($UpnSuffix) { "$LabUserName@$UpnSuffix" } else { "$LabUserName@$DomainName" }
   $existing = Get-ADUser -Filter "sAMAccountName -eq '$LabUserName'" -ErrorAction SilentlyContinue
   if (-not $existing) {
     New-ADUser -Name $LabUserDisplayName -SamAccountName $LabUserName -UserPrincipalName $upn -DisplayName $LabUserDisplayName `
       -GivenName ($LabUserDisplayName.Split(' ')[0]) -Surname ($LabUserDisplayName.Split(' ')[-1]) -Path $ouUsers `
-      -AccountPassword (ConvertTo-SecureString $pwd -AsPlainText -Force) -Enabled $true -PasswordNeverExpires $true -ChangePasswordAtLogon $false | Out-Null
+      -AccountPassword (ConvertTo-SecureString $labPwd -AsPlainText -Force) -Enabled $true -PasswordNeverExpires $true -ChangePasswordAtLogon $false | Out-Null
     Write-Output "Created lab user $upn (enabled)"
     foreach ($gn in 'LAB-Workstation-Admins', 'LAB-RDP-Users', 'LAB-Intune-Enroll', 'LAB-SOC-Analysts') {
       Add-ADGroupMember -Identity $gn -Members $LabUserName -ErrorAction SilentlyContinue
@@ -176,7 +176,7 @@ Import-Module GroupPolicy
 function Ensure-Gpo {
   param([string]$Name, [string]$LinkTarget)
   $gpo = Get-GPO -Name $Name -ErrorAction SilentlyContinue
-  if (-not $gpo) { $gpo = New-GPO -Name $Name; Write-Output "Created GPO $Name" }
+  if (-not $gpo) { $gpo = New-GPO -Name $Name; Write-Host "Created GPO $Name" }
   $links = (Get-GPInheritance -Target $LinkTarget).GpoLinks | Where-Object { $_.DisplayName -eq $Name }
   if (-not $links) { New-GPLink -Name $Name -Target $LinkTarget -LinkEnabled Yes | Out-Null }
   return $gpo
