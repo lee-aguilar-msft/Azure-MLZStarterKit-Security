@@ -29,7 +29,6 @@ param (
   [string[]]$Solutions = @(
     'azure-sentinel-solution-azureactivedirectory',
     'azure-sentinel-solution-azureactivity',
-    'azure-sentinel-solution-microsoftdefenderforendpoint',
     'azure-sentinel-solution-microsoft365defender',
     'azure-sentinel-solution-securityevents',
     'azure-sentinel-solution-syslog',
@@ -62,6 +61,7 @@ $base = "$arm/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/pr
 $apiContent = '2024-03-01'
 $apiRules = '2024-03-01'
 $apiSettings = '2023-12-01-preview'
+$apiConnectors = '2024-01-01-preview'   # MicrosoftThreatProtection connector kind is preview-only
 
 function Invoke-Arm {
   param([string]$Method, [string]$Uri, $Body)
@@ -198,10 +198,15 @@ if ($SkipUeba) { Write-Output '--- UEBA enablement skipped (-SkipUeba) ---' }
 else {
 Write-Output '--- Enabling Entity Behavior Analytics (UEBA) ---'
 try {
-  $eaUri = "$base/settings/EntityAnalytics?api-version=$apiSettings"
-  Invoke-Arm PUT $eaUri @{ kind = 'EntityAnalytics'; properties = @{ entityProviders = @('AzureActiveDirectory') } } | Out-Null
-  $uebaUri = "$base/settings/Ueba?api-version=$apiSettings"
-  Invoke-Arm PUT $uebaUri @{ kind = 'Ueba'; properties = @{ dataSources = $UebaDataSources } } | Out-Null
+  # Settings are singletons: an update of an existing one must carry its current ETag.
+  function Set-SentinelSetting {
+    param([string]$Name, [hashtable]$Body)
+    $uri = "$base/settings/$Name`?api-version=$apiSettings"
+    try { $cur = Invoke-Arm GET $uri; if ($cur.PSObject.Properties.Name -contains 'etag' -and $cur.etag) { $Body['etag'] = $cur.etag } } catch { }
+    Invoke-Arm PUT $uri $Body | Out-Null
+  }
+  Set-SentinelSetting 'EntityAnalytics' @{ kind = 'EntityAnalytics'; properties = @{ entityProviders = @('AzureActiveDirectory') } }
+  Set-SentinelSetting 'Ueba' @{ kind = 'Ueba'; properties = @{ dataSources = $UebaDataSources } }
   Write-Output "UEBA enabled over: $($UebaDataSources -join ', ')"
 } catch { Write-Warning "UEBA enablement: $($_.Exception.Message)" }
 }
@@ -211,9 +216,9 @@ if ($EnableXdrConnector) {
   Write-Output '--- Enabling Microsoft Defender XDR data connector ---'
   try {
     $tenantId = $ctx.Tenant.Id
-    $existing = (Invoke-Arm GET "$base/dataConnectors?api-version=$apiRules").value | Where-Object { $_.kind -eq 'MicrosoftThreatProtection' }
+    $existing = (Invoke-Arm GET "$base/dataConnectors?api-version=$apiConnectors").value | Where-Object { $_.kind -eq 'MicrosoftThreatProtection' }
     if ($existing) { Write-Output "Microsoft Defender XDR connector already present ($($existing[0].name)) - skipping."; $skipXdr = $true } else { $skipXdr = $false }
-    $xdrUri = "$base/dataConnectors/$([guid]::NewGuid())?api-version=$apiRules"
+    $xdrUri = "$base/dataConnectors/$([guid]::NewGuid())?api-version=$apiConnectors"
     $xdrBody = @{
       kind = 'MicrosoftThreatProtection'
       properties = @{
