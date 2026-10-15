@@ -68,9 +68,12 @@ function Invoke-Arm {
   for ($attempt = 1; $attempt -le 5; $attempt++) {
     try { return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $headers -Body $json }
     catch {
-      $code = $_.Exception.Response.StatusCode.value__
+      $code = 0
+      try { $code = [int]$_.Exception.Response.StatusCode } catch { }
       if ($code -eq 429 -or $code -ge 500) { Start-Sleep -Seconds (5 * $attempt); continue }
-      throw
+      # Surface the ARM error body (pwsh puts it in ErrorDetails) so failures are actionable
+      $detail = if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $_.Exception.Message }
+      throw "HTTP $code $Method $($Uri.Split('?')[0].Split('/')[-1]) : $detail"
     }
   }
 }
@@ -88,10 +91,22 @@ foreach ($want in $Solutions) {
   # Catalog contentIds are publisher-prefixed (e.g. azuresentinel.azure-sentinel-solution-azureactivedirectory)
   $pkg = $packages | Where-Object { $_.properties.contentId -eq $want -or $_.properties.contentId -like "*.$want" -or $_.name -eq $want } | Select-Object -First 1
   if (-not $pkg) { Write-Warning "Solution '$want' not found in catalog (skipping)."; continue }
-  $installUri = "$base/contentPackages/$($pkg.properties.contentId)?api-version=$apiContent"
+  # The package id in the PUT path is the catalog item's name (publisher-prefixed contentId).
+  $pkgId = $pkg.name
+  $installUri = "$base/contentPackages/$pkgId`?api-version=$apiContent"
+  # Only send the writable package properties - the catalog GET returns read-only fields
+  # (installedVersion, metadataResourceId, ...) that the PUT rejects with 400.
+  $pp = $pkg.properties
+  $installBody = @{ properties = [ordered]@{} }
+  foreach ($prop in 'contentId', 'contentProductId', 'contentKind', 'contentSchemaVersion', 'version',
+    'displayName', 'publisherDisplayName', 'description', 'providers', 'firstPublishDate', 'lastPublishDate',
+    'source', 'author', 'support', 'dependencies', 'categories', 'icon', 'isNew', 'isPreview', 'isFeatured',
+    'isDeprecated') {
+    if ($pp.PSObject.Properties.Name -contains $prop -and $null -ne $pp.$prop) { $installBody.properties[$prop] = $pp.$prop }
+  }
   try {
-    Invoke-Arm PUT $installUri $pkg.properties | Out-Null
-    Write-Output "Installed: $($pkg.properties.displayName) [$($pkg.properties.contentId)]"
+    Invoke-Arm PUT $installUri $installBody | Out-Null
+    Write-Output "Installed: $($pp.displayName) [$pkgId]"
   } catch { Write-Warning "Install failed for $want : $($_.Exception.Message)" }
 }
 
@@ -126,7 +141,7 @@ foreach ($t in $unique) {
     'incidentConfiguration', 'alertRuleTemplateName', 'templateVersion', 'sentinelEntitiesMappings') {
     if ($p.PSObject.Properties.Name -contains $prop -and $null -ne $p.$prop) { $body.properties[$prop] = $p.$prop }
   }
-  if (-not $body.properties.Contains('alertRuleTemplateName')) { $body.properties['alertRuleTemplateName'] = $p.name }
+  if (-not $body.properties.Contains('alertRuleTemplateName')) { $body.properties['alertRuleTemplateName'] = $t.name }   # template id lives on the resource, not .properties
   if (-not $body.properties.Contains('templateVersion') -and ($p.PSObject.Properties.Name -contains 'version')) { $body.properties['templateVersion'] = $p.version }
   if (-not $body.properties.Contains('suppressionDuration')) { $body.properties['suppressionDuration'] = 'PT1H' }
   if (-not $body.properties.Contains('suppressionEnabled')) { $body.properties['suppressionEnabled'] = $false }
