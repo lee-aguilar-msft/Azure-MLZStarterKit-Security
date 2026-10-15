@@ -102,6 +102,15 @@ try {
   $hits = $policies | Where-Object { $_.conditions.applications.includeApplications -contains 'All' -and $_.conditions.applications.excludeApplications -notcontains $intuneEnrollmentAppId }
   if (-not $hits) { Write-Output 'Conditional Access: no enabled all-apps policy is missing the Intune Enrollment exclusion.' }
   foreach ($p in $hits) {
+    # Policies that only target guests / external users (e.g. Microsoft-managed "... for Microsoft partners and
+    # vendors") never apply to the synced lab user, so they cannot block Intune enrollment.
+    $u = $p.conditions.users
+    $guestOnly = (@($u.includeUsers) -notcontains 'All') -and -not @($u.includeUsers | Where-Object { $_ -and $_ -ne 'GuestsOrExternalUsers' }) -and
+      -not @($u.includeGroups) -and -not @($u.includeRoles) -and ($u.includeGuestsOrExternalUsers -or @($u.includeUsers) -contains 'GuestsOrExternalUsers')
+    if ($guestOnly) {
+      Write-Output "Conditional Access: '$($p.displayName)' targets guests/external users only - does not affect the lab user."
+      continue
+    }
     if ($ExcludeIntuneEnrollmentFromCa) {
       $ex = @($p.conditions.applications.excludeApplications) + $intuneEnrollmentAppId
       $patch = @{ conditions = @{ applications = @{ excludeApplications = $ex } } } | ConvertTo-Json -Depth 6
