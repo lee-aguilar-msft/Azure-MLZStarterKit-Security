@@ -100,7 +100,7 @@ Write-Output "Workspace   : $WorkspaceName ($ResourceGroupName, $wsLocation)"
 # ================= 1. Install content hub solutions =================
 Write-Output '--- Installing Content Hub solutions ---'
 $pkgUri = "$base/contentProductPackages?api-version=$apiContent"
-$packages = Invoke-ArmList $pkgUri
+$packages = @(Invoke-ArmList $pkgUri)
 Write-Output "Found $($packages.Count) content packages in the catalog."
 
 foreach ($want in $Solutions) {
@@ -118,7 +118,7 @@ foreach ($want in $Solutions) {
   # by a plain PUT contentPackages/<id> only flips the Content Hub status and then blocks the template
   # with "contentId ... is already associated with another package", so remove any such record first.
   try {
-    $installed = (Invoke-Arm GET "$base/contentPackages?api-version=$apiContent").value
+    $installed = @((Invoke-Arm GET "$base/contentPackages?api-version=$apiContent").value)
     foreach ($stale in ($installed | Where-Object { $_.properties.contentId -eq $contentId -and $_.name -ne $contentId })) {
       Write-Output "  removing stale package record $($stale.name)"
       Invoke-Arm DELETE "$base/contentPackages/$($stale.name)?api-version=$apiContent" | Out-Null
@@ -149,7 +149,7 @@ Start-Sleep -Seconds 30   # let template records populate
 # ================= 2. Enable matching analytics rule templates =================
 Write-Output '--- Enabling analytics rule templates ---'
 $tplUri = "$base/alertRuleTemplates?api-version=$apiRules"
-$templates = Invoke-ArmList $tplUri
+$templates = @(Invoke-ArmList $tplUri)
 Write-Output "Catalog has $($templates.Count) alert rule templates."
 
 $wanted = $templates | Where-Object {
@@ -164,7 +164,9 @@ Write-Output "Matched $($unique.Count) unique Scheduled/NRT templates for connec
 
 # Idempotency: rules already created from a template are skipped, and if an earlier run was
 # interrupted and left duplicates (same template, several rule ids) the extras are removed.
-$existingRules = Invoke-ArmList "$base/alertRules?api-version=$apiRules"
+# @(): a fresh workspace has exactly one rule (Advanced Multistage Attack Detection); PowerShell would
+# return it as a scalar and .Count fails under StrictMode
+$existingRules = @(Invoke-ArmList "$base/alertRules?api-version=$apiRules")
 $haveTemplate = @{}; $dupes = 0
 foreach ($r in $existingRules) {
   $tn = if ($r.properties.PSObject.Properties.Name -contains 'alertRuleTemplateName') { $r.properties.alertRuleTemplateName } else { $null }
@@ -222,8 +224,8 @@ if ($EnableXdrConnector) {
   Write-Output '--- Enabling Microsoft Defender XDR data connector ---'
   try {
     $tenantId = $ctx.Tenant.Id
-    $existing = (Invoke-Arm GET "$base/dataConnectors?api-version=$apiConnectors").value | Where-Object { $_.kind -eq 'MicrosoftThreatProtection' }
-    if ($existing) { Write-Output "Microsoft Defender XDR connector already present ($($existing[0].name)) - skipping."; $skipXdr = $true } else { $skipXdr = $false }
+    $existing = @((Invoke-Arm GET "$base/dataConnectors?api-version=$apiConnectors").value | Where-Object { $_.kind -eq 'MicrosoftThreatProtection' })
+    if ($existing.Count) { Write-Output "Microsoft Defender XDR connector already present ($($existing[0].name)) - skipping."; $skipXdr = $true } else { $skipXdr = $false }
     $xdrUri = "$base/dataConnectors/$([guid]::NewGuid())?api-version=$apiConnectors"
     $xdrBody = @{
       kind = 'MicrosoftThreatProtection'
