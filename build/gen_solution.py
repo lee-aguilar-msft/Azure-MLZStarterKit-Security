@@ -47,7 +47,9 @@ V["linuxRepoFqdns"] = ["packages.microsoft.com",
     "rhui-1.microsoft.com", "rhui-2.microsoft.com", "rhui-3.microsoft.com", "rhui-4.microsoft.com",
     "rhui4-1.microsoft.com", "rhui4-2.microsoft.com", "rhui4-3.microsoft.com",
     "security.ubuntu.com", "archive.ubuntu.com", "*.archive.ubuntu.com",
-    "azure.archive.ubuntu.com", "changelogs.ubuntu.com", "cdn.redhat.com", "*.cdn.redhat.com", "subscription.rhsm.redhat.com",
+    "azure.archive.ubuntu.com", "changelogs.ubuntu.com",
+    # Ubuntu apt hooks (ESM/apt-news/motd) also call these; a silently dropped call stalls apt-get update
+    "*.ubuntu.com", "esm.ubuntu.com", "motd.ubuntu.com", "contracts.canonical.com", "*.snapcraft.io", "cdn.redhat.com", "*.cdn.redhat.com", "subscription.rhsm.redhat.com",
     "*.akamaiedge.net", "*.akamaitechnologies.com", "scc.suse.com", "*.susecloud.net", "updates.suse.com"]
 V["pkiFqdns"] = ["crl.microsoft.com", "*.crl.microsoft.com", "www.microsoft.com", "ctldl.windowsupdate.com",
     "oneocsp.microsoft.com", "ocsp.digicert.com", "*.digicert.com", "cacerts.digicert.com"]
