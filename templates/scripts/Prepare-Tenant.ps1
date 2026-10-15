@@ -63,8 +63,18 @@ if (-not $SkipMdm) {
   $uri = "beta/policies/mobileDeviceManagementPolicies/$mdmPolicyId"
   $cur = Invoke-MgGraphRequest -Method GET -Uri $uri
   Write-Output ("MDM before : scope={0} discovery={1}" -f $cur.appliesTo, $cur.discoveryUrl)
-  $body = @{ appliesTo = $(if ($MdmScopeGroupId) { 'selected' } else { 'all' }) } + $mdmUrls
-  Invoke-MgGraphRequest -Method PATCH -Uri $uri -Body ($body | ConvertTo-Json) -ContentType 'application/json' | Out-Null
+  # Graph rejects one PATCH that changes both the URLs and the policy properties (appliesTo):
+  # "Simultaneous patch requests on both URL properties and Policy properties ... are currently not supported".
+  # Send them separately, and only what actually differs.
+  $scope = if ($MdmScopeGroupId) { 'selected' } else { 'all' }
+  if ($cur.appliesTo -ne $scope) {
+    Invoke-MgGraphRequest -Method PATCH -Uri $uri -Body (@{ appliesTo = $scope } | ConvertTo-Json) -ContentType 'application/json' | Out-Null
+  }
+  $urlPatch = @{}
+  foreach ($k in $mdmUrls.Keys) { if ($cur[$k] -ne $mdmUrls[$k]) { $urlPatch[$k] = $mdmUrls[$k] } }
+  if ($urlPatch.Count) {
+    Invoke-MgGraphRequest -Method PATCH -Uri $uri -Body ($urlPatch | ConvertTo-Json) -ContentType 'application/json' | Out-Null
+  }
   if ($MdmScopeGroupId) {
     $inc = (Invoke-MgGraphRequest -Method GET -Uri "$uri/includedGroups").value
     if (-not ($inc | Where-Object { $_.id -eq $MdmScopeGroupId })) {
