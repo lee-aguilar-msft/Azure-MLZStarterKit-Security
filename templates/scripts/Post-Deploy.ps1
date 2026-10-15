@@ -13,7 +13,8 @@ param(
   [Parameter(Mandatory = $true)] [string]$ResourceGroupName,
   [Parameter(Mandatory = $true)] [string]$WorkspaceName,
   [switch]$EnableXdrConnector,
-  [switch]$SkipSentinelContent
+  [switch]$SkipSentinelContent,
+  [string]$DefenderForServersPlan = 'P2'   # '' to leave the plan alone
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -28,6 +29,18 @@ if (-not $SkipSentinelContent) {
   if ($EnableXdrConnector) { $contentParams['EnableXdrConnector'] = $true }
   & (Join-Path $here 'Enable-SentinelContent.ps1') @contentParams
 }
+
+Write-Host "`n[1b] Defender for Cloud plans on the subscription:" -ForegroundColor Cyan
+# Seen once in Azure Government: the template's VirtualMachines pricing succeeded, yet the plan read back
+# as Free afterwards. Re-assert Defender for Servers here so the lab never runs without it.
+if ($DefenderForServersPlan) {
+  $vm = az security pricing show -n VirtualMachines --query "{tier:pricingTier,subPlan:subPlan}" -o json | ConvertFrom-Json
+  if ($vm.tier -ne 'Standard' -or $vm.subPlan -ne $DefenderForServersPlan) {
+    Write-Host "  Defender for Servers was $($vm.tier)/$($vm.subPlan) - re-enabling Standard/$DefenderForServersPlan" -ForegroundColor Yellow
+    az security pricing create -n VirtualMachines --tier Standard --subplan $DefenderForServersPlan -o none
+  }
+}
+az security pricing list --query "value[?pricingTier=='Standard'].{plan:name,tier:pricingTier,subPlan:subPlan}" -o table
 
 Write-Host "`n[2/3] Break-glass + Conditional Access checklist (manual, needs Global Admin + MFA):" -ForegroundColor Yellow
 @'
