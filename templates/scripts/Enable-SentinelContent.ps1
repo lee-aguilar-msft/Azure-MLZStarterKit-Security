@@ -177,7 +177,7 @@ foreach ($r in $existingRules) {
 }
 Write-Output "Existing rules: $($existingRules.Count) (duplicates removed: $dupes)"
 
-$enabled = 0; $failed = 0; $skipped = 0
+$enabled = 0; $failed = 0; $skipped = 0; $staleWs = 0
 foreach ($t in $unique) {
   if ($haveTemplate.ContainsKey($t.name)) { $skipped++; continue }
   $p = $t.properties
@@ -197,9 +197,18 @@ foreach ($t in $unique) {
   if (-not $body.properties.Contains('suppressionEnabled')) { $body.properties['suppressionEnabled'] = $false }
   $body.properties['enabled'] = $true
   try { Invoke-Arm PUT $ruleUri $body | Out-Null; $enabled++ }
-  catch { $failed++; Write-Warning "Rule '$($p.displayName)' failed: $($_.Exception.Message)" }
+  catch {
+    $failed++
+    if ("$($_.Exception.Message)" -match 'Log Analytics workspace .* could not be found') { $staleWs++ }
+    Write-Warning "Rule '$($p.displayName)' failed: $($_.Exception.Message)"
+  }
 }
 Write-Output "Analytics rules enabled: $enabled new, $skipped already present, $failed templates rejected by the service"
+if ($staleWs -gt 10) {
+  Write-Warning ("$staleWs rules were rejected with 'Log Analytics workspace <id> could not be found' and that id is not this " +
+    "workspace's id. Sentinel still maps '$WorkspaceName' to an earlier, deleted workspace of the same name. " +
+    "Redeploy with a new workspace name (destroy.ps1 now offboards Sentinel before deleting a workspace, which prevents this).")
+}
 
 # ================= 3. Entity Behavior Analytics (UEBA) =================
 if ($SkipUeba) { Write-Output '--- UEBA enablement skipped (-SkipUeba) ---' }
