@@ -1,0 +1,229 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" font-family="DejaVu Sans, Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,1 L9,5 L0,9 z" fill="#5B7A99"/>
+    </marker>
+    <marker id="arrg" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,1 L9,5 L0,9 z" fill="#4E9A3C"/>
+    </marker>
+    <style>
+      .title{font-size:26px;font-weight:bold;fill:#1F3864}
+      .sub{font-size:14px;fill:#555}
+      .zone{font-size:19px;font-weight:bold;fill:#333}
+      .lbl{font-size:12px;fill:#222}
+      .small{font-size:10px;fill:#444}
+      .mono{font-family:DejaVu Sans Mono, Consolas, monospace;font-size:10.5px;fill:#1F3864}
+      .box{fill:#FFFFFF;stroke:#8FA8C2;stroke-width:1.2;rx:6}
+      .vm{fill:#E8F1FA;stroke:#2E75B6;stroke-width:1.2}
+      .lx{fill:#FFF4E0;stroke:#C77A00;stroke-width:1.2}
+      .sec{fill:#EAF4E4;stroke:#4E9A3C;stroke-width:1.2}
+      .legend{font-size:12px;fill:#333}
+    </style>
+  </defs>
+
+  <rect width="1600" height="1000" fill="#FAFBFD"/>
+  <text x="30" y="40" class="title">MLZ Security Lab Starter Kit — what the deployment creates (Azure Government, usgovvirginia)</text>
+  <text x="30" y="62" class="sub">Prefix sdl-dev-va-seclab · one subscription · everything below is created by solution.json + Post-Deploy.ps1; nothing is pre-existing except the tenant and the Entra security group</text>
+
+  <!-- ===== Security, Monitoring and Compliance band ===== -->
+  <rect x="30" y="80" width="1540" height="150" fill="#E9E9E9" stroke="#8A8A8A" stroke-width="1.5" stroke-dasharray="7,4" rx="4"/>
+  <text x="45" y="105" class="zone">Security, Monitoring and Compliance (subscription / tenant scope)</text>
+
+  <rect x="45" y="118" width="300" height="100" class="sec" rx="6"/>
+  <text x="58" y="138" class="lbl" font-weight="bold">Microsoft Defender for Cloud</text>
+  <text x="58" y="156" class="small">Plans on: CSPM, Servers P2, Storage, SQL (on VMs),</text>
+  <text x="58" y="171" class="small">Containers, Key Vault, Resource Manager, OSS DB, Cosmos</text>
+  <text x="58" y="186" class="small">Hidden in Gov: App Service, APIs · retired: DNS</text>
+  <text x="58" y="206" class="small">Defender for Servers auto-provisions MDE on the VMs</text>
+
+  <rect x="360" y="118" width="250" height="100" class="sec" rx="6"/>
+  <text x="373" y="138" class="lbl" font-weight="bold">Azure Policy (audit-only)</text>
+  <text x="373" y="156" class="small">Microsoft cloud security benchmark (MCSB)</text>
+  <text x="373" y="171" class="small">MLZ built-in policy set</text>
+  <text x="373" y="186" class="small">Optional: NIST 800-53 R5, NIST 800-171 R2</text>
+  <text x="373" y="206" class="small">assign-mcsb / assign-mlz at subscription scope</text>
+
+  <rect x="625" y="118" width="400" height="100" class="sec" rx="6"/>
+  <text x="638" y="138" class="lbl" font-weight="bold">Microsoft Sentinel on sdl-law-lab (tier-3 RG)</text>
+  <text x="638" y="156" class="small">Content Hub: Entra ID · Azure Activity · Defender XDR · Windows Security</text>
+  <text x="638" y="171" class="small">Events · Syslog · UEBA Essentials → 266 analytics rules enabled, UEBA on</text>
+  <text x="638" y="186" class="small">Connectors: Defender XDR (+MDE/MDI/MDCA/MDO/IDP), SecurityEvents</text>
+  <text x="638" y="201" class="small">via AMA, Syslog via AMA, Entra ID, Azure Activity</text>
+  <text x="638" y="214" class="small" fill="#1F3864">(solutions, rules, UEBA, connectors = Post-Deploy.ps1)</text>
+
+  <rect x="1040" y="118" width="250" height="100" class="sec" rx="6"/>
+  <text x="1053" y="138" class="lbl" font-weight="bold">Diagnostic settings</text>
+  <text x="1053" y="156" class="small">Entra ID → sdl-law-lab (tenant-level setting):</text>
+  <text x="1053" y="171" class="small">Audit, SignIn, NonInteractive, SP, MI, Prov., Risk</text>
+  <text x="1053" y="186" class="small">Activity log → sdl-law-lab (subscription)</text>
+  <text x="1053" y="206" class="small">NSG flow logs → NetworkWatcherRG (MLZ)</text>
+
+  <rect x="1305" y="118" width="250" height="100" class="sec" rx="6"/>
+  <text x="1318" y="138" class="lbl" font-weight="bold">Microsoft Entra ID (tenant)</text>
+  <text x="1318" y="156" class="small">Security group → VM Admin Login on all VMs</text>
+  <text x="1318" y="171" class="small">Entra SSH (Linux) · Entra RDP via Bastion (Win)</text>
+  <text x="1318" y="186" class="small">Manual: break-glass GA, CA exclusion for Intune</text>
+  <text x="1318" y="201" class="small">Enrollment, Entra Connect on ms01 (checklist)</text>
+
+  <!-- ===== Hub ===== -->
+  <rect x="30" y="250" width="330" height="700" fill="#F3F6FA" stroke="#2E75B6" stroke-width="2" stroke-dasharray="8,5" rx="4"/>
+  <text x="45" y="276" class="zone">MLZ Hub</text>
+  <text x="45" y="294" class="small">sdl-dev-va-hub-rg-network · hub VNet</text>
+
+  <rect x="50" y="310" width="290" height="70" class="box"/>
+  <text x="62" y="331" class="lbl" font-weight="bold">Azure Firewall (Premium)</text>
+  <text x="62" y="348" class="small">Rule collection groups: Intune, MDE, Arc, Entra,</text>
+  <text x="62" y="363" class="small">Linux repos (+ Azure RHUI), PKI, AzureCloud tag</text>
+
+  <rect x="50" y="395" width="290" height="55" class="box"/>
+  <text x="62" y="416" class="lbl" font-weight="bold">Azure Bastion</text>
+  <text x="62" y="433" class="small">RDP / SSH with Entra credentials, no public IPs on VMs</text>
+
+  <rect x="50" y="465" width="290" height="55" class="box"/>
+  <text x="62" y="486" class="lbl" font-weight="bold">Hub Log Analytics workspace</text>
+  <text x="62" y="503" class="small">MLZ operations logs, firewall and NSG flow logs</text>
+
+  <rect x="50" y="535" width="290" height="78" class="box"/>
+  <text x="62" y="556" class="lbl" font-weight="bold">Private DNS zones (Arc)</text>
+  <text x="62" y="573" class="mono">privatelink.his.arc.azure.us</text>
+  <text x="62" y="588" class="mono">privatelink.guestconfiguration.azure.us</text><text x="62" y="602" class="mono">privatelink.dp.kubernetesconfig….azure.us</text>
+
+  <rect x="50" y="620" width="290" height="55" class="box"/>
+  <text x="62" y="641" class="lbl" font-weight="bold">Network Watcher + NSG flow logs</text>
+  <text x="62" y="658" class="small">created in NetworkWatcherRG — removed by destroy.ps1</text>
+
+  <rect x="50" y="690" width="290" height="55" class="box"/>
+  <text x="62" y="711" class="lbl" font-weight="bold">Hub Key Vault + Disk Encryption Set</text>
+  <text x="62" y="728" class="small">Encryption-at-host for every lab VM</text>
+
+  <text x="62" y="775" class="small" font-style="italic">Hub → spoke: VNet peering, UDR 0.0.0.0/0 → firewall</text>
+  <text x="62" y="792" class="small" font-style="italic">(forced tunnelling for the tier-3 subnet)</text>
+
+  <!-- peering arrow -->
+  <line x1="360" y1="470" x2="395" y2="470" stroke="#5B7A99" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="395" y1="490" x2="360" y2="490" stroke="#5B7A99" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="340" y="455" class="small">vnet peer</text>
+
+  <!-- ===== Tier 3 ===== -->
+  <rect x="395" y="250" width="1175" height="700" fill="#F3F6FA" stroke="#2E75B6" stroke-width="2" stroke-dasharray="8,5" rx="4"/>
+  <text x="410" y="276" class="zone">Tier 3 — Security Lab workload</text>
+  <text x="410" y="294" class="small">sdl-dev-va-seclab-rg-network · VNet 10.60.0.0/24 · subnet 10.60.0.0/25 with NSG · route table → firewall · 59 resources</text>
+
+  <!-- Identity row -->
+  <rect x="410" y="310" width="740" height="190" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
+  <text x="422" y="330" class="lbl" font-weight="bold">Active Directory forest corp.sleepingdragonslab.us (CORP)</text>
+
+  <rect x="422" y="345" width="150" height="70" class="vm" rx="5"/>
+  <text x="432" y="365" class="lbl" font-weight="bold">sdl-dc01</text>
+  <text x="432" y="381" class="small">Domain controller</text>
+  <text x="432" y="395" class="small">10.60.0.10 · WS2022</text>
+  <text x="432" y="409" class="small">forest + DNS + GPOs</text>
+
+  <rect x="585" y="345" width="130" height="70" class="vm" rx="5"/>
+  <text x="595" y="365" class="lbl" font-weight="bold">sdl-ms01</text>
+  <text x="595" y="381" class="small">Member server</text>
+  <text x="595" y="395" class="small">Entra Connect staged</text>
+  <text x="595" y="409" class="small">(C:\LabTools)</text>
+
+  <rect x="728" y="345" width="130" height="70" class="vm" rx="5"/>
+  <text x="738" y="365" class="lbl" font-weight="bold">sdl-ms02</text>
+  <text x="738" y="381" class="small">Member server</text>
+  <text x="738" y="395" class="small">WS2022 Gen2</text>
+
+  <rect x="871" y="345" width="265" height="70" class="vm" rx="5"/>
+  <text x="881" y="365" class="lbl" font-weight="bold">sdl-cl01 · sdl-cl02 · sdl-cl03</text>
+  <text x="881" y="381" class="small">Windows 11 24H2 clients, domain-joined</text>
+  <text x="881" y="395" class="small">hybrid join + Intune auto-enrol (post-deploy)</text>
+  <text x="881" y="409" class="small">MDE via Defender for Servers / GPO</text>
+
+  <text x="422" y="440" class="small">All Windows VMs: domain join, configure-member run-command, Azure Monitor Agent, auto-shutdown schedule,</text>
+  <text x="422" y="455" class="small">Virtual Machine Administrator Login for the Entra group, NICs created serially (DC keeps 10.60.0.10).</text>
+  <text x="422" y="478" class="small">Windows DCR sdl-dcr-windows-security → SecurityEvent table (Sentinel "Windows Security Events via AMA")</text>
+
+  <!-- Linux row -->
+  <rect x="410" y="515" width="740" height="120" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
+  <text x="422" y="535" class="lbl" font-weight="bold">Linux servers with Entra SSH login</text>
+  <rect x="422" y="548" width="225" height="52" class="lx" rx="5"/>
+  <text x="432" y="567" class="lbl" font-weight="bold">sdl-lx-rhel</text>
+  <text x="432" y="583" class="small">RHEL · Azure RHUI via firewall</text>
+  <rect x="660" y="548" width="225" height="52" class="lx" rx="5"/>
+  <text x="670" y="567" class="lbl" font-weight="bold">sdl-lx-ubuntu</text>
+  <text x="670" y="583" class="small">Ubuntu · apt (prep-linux waits for locks)</text>
+  <rect x="898" y="548" width="238" height="52" class="lx" rx="5"/>
+  <text x="908" y="567" class="lbl" font-weight="bold">sdl-lx-sles</text>
+  <text x="908" y="583" class="small">SLES · zypper</text>
+  <text x="422" y="622" class="small">prep-linux run-command → AADSSHLoginForLinux → Azure Monitor Agent · Linux DCR sdl-dcr-linux-syslog → Syslog table</text>
+
+  <!-- Monitoring / Arc / CSPM column -->
+  <rect x="1165" y="310" width="390" height="120" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
+  <text x="1177" y="330" class="lbl" font-weight="bold">Log Analytics + Sentinel</text>
+  <text x="1177" y="348" class="mono">sdl-law-lab</text>
+  <text x="1177" y="366" class="small">Sentinel onboarding state · SecurityInsights solution</text>
+  <text x="1177" y="381" class="small">DCE sdl-dce-sentinel · DCRs + associations to all 9 VMs</text>
+  <text x="1177" y="396" class="small">Content-script managed identity (Sentinel Contributor)</text>
+  <text x="1177" y="414" class="small">Hub LAW stays separate (MLZ ops); lab telemetry here</text>
+
+  <rect x="1165" y="445" width="390" height="95" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
+  <text x="1177" y="465" class="lbl" font-weight="bold">Azure Arc Private Link Scope</text>
+  <text x="1177" y="483" class="small">sdl-pls-arc + private endpoint sdl-pe-arc (NIC in the subnet)</text>
+  <text x="1177" y="498" class="small">linked to the three privatelink.*.azure.us zones in the hub</text>
+  <text x="1177" y="513" class="small">deployed after the VM module (avoids the DC IP race)</text>
+  <text x="1177" y="528" class="small">lets on-prem / other-cloud servers onboard to Arc privately</text>
+
+  <rect x="1165" y="555" width="390" height="80" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
+  <text x="1177" y="575" class="lbl" font-weight="bold">CSPM coverage samples (Defender findings to look at)</text>
+  <text x="1177" y="593" class="small">Key Vault kv-* · App Service plan asp-* + web app app-*</text>
+  <text x="1177" y="608" class="small">Container registry acr-* · optional SQL and APIM samples</text>
+  <text x="1177" y="623" class="small">names derived from a hash of the RG id + prefix</text>
+
+  <!-- Flow lines: VMs -> workspace -->
+  <line x1="1150" y1="400" x2="1165" y2="400" stroke="#4E9A3C" stroke-width="2" marker-end="url(#arrg)"/>
+  <line x1="1150" y1="575" x2="1165" y2="575" stroke="#4E9A3C" stroke-width="2"/>
+  <line x1="1157" y1="575" x2="1157" y2="420" stroke="#4E9A3C" stroke-width="2"/>
+  
+
+  <!-- Operations footer inside tier 3 -->
+  <rect x="410" y="655" width="1145" height="275" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
+  <text x="422" y="677" class="lbl" font-weight="bold">How it is built and operated</text>
+
+  <rect x="422" y="690" width="360" height="225" fill="#F7F9FC" stroke="#C9D5E3" rx="5"/>
+  <text x="434" y="710" class="lbl" font-weight="bold">1 · Deploy to Azure Gov (portal form)</text>
+  <text x="434" y="730" class="small">solution.json (subscription scope) → nested deployments:</text>
+  <text x="434" y="747" class="mono">deploy-mlz-core · deploy-tier3</text>
+  <text x="434" y="763" class="mono">deploy-cspm-coverage · deploy-ad-entra-vms</text>
+  <text x="434" y="779" class="mono">deploy-security-lab · deploy-arc-pls</text>
+  <text x="434" y="799" class="small">+ Defender pricings, policy assignments, role assignments</text>
+  <text x="434" y="819" class="small">uiDefinition.json is cloud-aware: Gov regions hide plans</text>
+  <text x="434" y="834" class="small">and VM sizes Azure Government does not offer</text>
+  <text x="434" y="856" class="small">≈ 60–90 min · Owner on the subscription</text>
+  <text x="434" y="880" class="small">Repeatable: .github/workflows/rebuild-lab.yml (90-day OIDC)</text>
+
+  <rect x="797" y="690" width="370" height="225" fill="#F7F9FC" stroke="#C9D5E3" rx="5"/>
+  <text x="809" y="710" class="lbl" font-weight="bold">2 · Post-Deploy.ps1 (Cloud Shell, your sign-in)</text>
+  <text x="809" y="730" class="small">Enable-SentinelContent.ps1:</text>
+  <text x="809" y="747" class="small">• installs Content Hub solutions (packaged templates)</text>
+  <text x="809" y="763" class="small">• enables matching analytics rule templates (idempotent)</text>
+  <text x="809" y="779" class="small">• UEBA + EntityAnalytics settings</text>
+  <text x="809" y="795" class="small">• Defender XDR connector</text>
+  <text x="809" y="811" class="small">• Entra ID + Activity log diagnostic settings</text>
+  <text x="809" y="831" class="small">re-asserts Defender for Servers P2, prints the plans</text>
+  <text x="809" y="851" class="small">prints the break-glass / CA / Entra Connect checklist</text>
+  <text x="809" y="875" class="small">≈ 10 min · Global or Security Administrator</text>
+
+  <rect x="1182" y="690" width="360" height="225" fill="#F7F9FC" stroke="#C9D5E3" rx="5"/>
+  <text x="1194" y="710" class="lbl" font-weight="bold">3 · destroy.ps1 (teardown)</text>
+  <text x="1194" y="730" class="small">deletes every RG with the sdl-dev-va- prefix in parallel</text>
+  <text x="1194" y="747" class="small">force-deletes + purges the Log Analytics workspaces</text>
+  <text x="1194" y="763" class="small">purges Key Vaults (soft-delete)</text>
+  <text x="1194" y="779" class="small">removes policy assignments, resets Defender plans</text>
+  <text x="1194" y="795" class="small">deletes the NetworkWatcherRG flow logs</text>
+  <text x="1194" y="819" class="small">not removed: tenant Entra diagnostic setting,</text>
+  <text x="1194" y="834" class="small">the Entra security group, break-glass account</text>
+  <text x="1194" y="858" class="small">≈ 20–40 min · safe to re-run</text>
+
+  <!-- legend -->
+  <rect x="1310" y="960" width="14" height="14" class="vm"/><text x="1330" y="972" class="legend">Windows VM</text>
+  <rect x="1420" y="960" width="14" height="14" class="lx"/><text x="1440" y="972" class="legend">Linux VM</text>
+  <rect x="1505" y="960" width="14" height="14" class="sec"/><text x="1525" y="972" class="legend">Security</text>
+  <text x="30" y="975" class="small">Diagram: docs/img/00-architecture.png · source docs/architecture.svg</text>
+</svg>

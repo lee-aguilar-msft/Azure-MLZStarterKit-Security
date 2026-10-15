@@ -24,6 +24,14 @@ Repository: <https://github.com/lee-aguilar-msft/Azure-MLZStarterKit-Security>
 
 ## What gets deployed
 
+The kit sits on a standard Mission Landing Zone: the upstream `mlz.json` module builds the network hub
+and the T0/T1/T2 spokes, and the kit adds a Tier 3 security-lab spoke plus the subscription- and
+tenant-level security layer.
+
+![Hub-and-spoke overview](img/00-overview.png)
+
+![What the deployment creates](img/00-architecture.png)
+
 | Layer | Resources |
 |---|---|
 | MLZ hub | Hub VNet, Azure Firewall (Premium) with the lab rule collection groups, Bastion, hub Log Analytics, NSG flow logs |

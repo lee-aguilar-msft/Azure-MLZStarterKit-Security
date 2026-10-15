@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="620" viewBox="0 0 1400 620" font-family="DejaVu Sans, Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="a" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,1 L11,6 L0,11 z" fill="#1F6FB2"/>
+    </marker>
+    <style>
+      .t{fill:#FFFFFF;font-size:26px;text-anchor:middle}
+      .s{fill:#E6F0FA;font-size:12.5px;text-anchor:middle}
+      .n{fill:#333;font-size:14px}
+      .h{fill:#1F3864;font-size:24px;font-weight:bold}
+    </style>
+  </defs>
+  <rect width="1400" height="620" fill="#FFFFFF"/>
+  <text x="30" y="40" class="h">MLZ Security Lab Starter Kit — hub-and-spoke overview</text>
+  <text x="30" y="64" class="n">Mission Landing Zone hub + T0/T1/T2 spokes come from the upstream mlz.json module; the kit adds the Tier 3 security-lab spoke and the security layer.</text>
+
+  <!-- T0 -->
+  <rect x="40" y="110" width="400" height="140" rx="22" fill="#0A66B5" stroke="#0A4F8A" stroke-width="2"/>
+  <text x="240" y="165" class="t">T0: Identity and</text>
+  <text x="240" y="200" class="t">Authorization</text>
+  <text x="240" y="232" class="s">MLZ identity VNet · deployed by mlz.json</text>
+
+  <!-- T1 -->
+  <rect x="40" y="400" width="400" height="140" rx="22" fill="#0A66B5" stroke="#0A4F8A" stroke-width="2"/>
+  <text x="240" y="455" class="t">T1: Infrastructure</text>
+  <text x="240" y="490" class="t">Operations</text>
+  <text x="240" y="522" class="s">MLZ operations VNet + hub Log Analytics · mlz.json</text>
+
+  <!-- T2 -->
+  <rect x="960" y="110" width="400" height="140" rx="22" fill="#0A66B5" stroke="#0A4F8A" stroke-width="2"/>
+  <text x="1160" y="165" class="t">T2: DevSecOps and</text>
+  <text x="1160" y="200" class="t">Shared Services</text>
+  <text x="1160" y="232" class="s">MLZ shared-services VNet · mlz.json</text>
+
+  <!-- T3 (the kit) -->
+  <rect x="960" y="380" width="400" height="190" rx="22" fill="#C77A00" stroke="#8A5300" stroke-width="3"/>
+  <text x="1160" y="425" class="t">T3: Security Lab (this kit)</text>
+  <text x="1160" y="462" class="s">10.60.0.0/24 · NSG · UDR → firewall</text>
+  <text x="1160" y="484" class="s">AD forest: DC, 2 member servers, 3 Win11 clients</text>
+  <text x="1160" y="506" class="s">RHEL / Ubuntu / SLES with Entra SSH login</text>
+  <text x="1160" y="528" class="s">Sentinel workspace · DCE/DCRs · Arc Private Link</text>
+  <text x="1160" y="550" class="s">CSPM samples: Key Vault, App Service</text>
+
+  <!-- Hub -->
+  <ellipse cx="700" cy="330" rx="175" ry="80" fill="#7030A0" stroke="#4B1F70" stroke-width="2"/>
+  <text x="700" y="320" class="t">Network</text>
+  <text x="700" y="352" class="t">Hub</text>
+  <text x="700" y="378" class="s">Azure Firewall Premium · Bastion</text><text x="700" y="395" class="s">private DNS zones · NSG flow logs</text>
+
+  <!-- arrows -->
+  <line x1="440" y1="200" x2="560" y2="282" stroke="#1F6FB2" stroke-width="2.5" marker-end="url(#a)"/>
+  <line x1="440" y1="450" x2="560" y2="378" stroke="#1F6FB2" stroke-width="2.5" marker-end="url(#a)"/>
+  <line x1="960" y1="200" x2="840" y2="282" stroke="#1F6FB2" stroke-width="2.5" marker-end="url(#a)"/>
+  <line x1="960" y1="455" x2="840" y2="378" stroke="#1F6FB2" stroke-width="2.5" marker-end="url(#a)"/>
+  <text x="470" y="232" class="n" fill="#1F6FB2">vnet peer</text>
+  <text x="455" y="470" class="n" fill="#1F6FB2">vnet peer</text>
+  <text x="850" y="232" class="n" fill="#1F6FB2">vnet peer</text>
+  <text x="868" y="468" class="n" fill="#1F6FB2">vnet peer +</text><text x="868" y="486" class="n" fill="#1F6FB2">forced tunnel</text>
+
+  <!-- security band -->
+  <rect x="40" y="570" width="1320" height="36" rx="8" fill="#EAF4E4" stroke="#4E9A3C" stroke-width="1.5"/>
+  <text x="700" y="594" class="n" text-anchor="middle">Subscription / tenant scope: Defender for Cloud plans · Policy (MCSB + MLZ, audit) · Sentinel content, analytics rules, UEBA, connectors · Entra ID + Activity log routing · Entra VM login</text>
+</svg>
