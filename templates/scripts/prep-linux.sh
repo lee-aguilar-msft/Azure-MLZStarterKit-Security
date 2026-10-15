@@ -19,7 +19,9 @@ age() { ps -o etimes= -p "$1" 2>/dev/null | tr -d ' '; }
 # kill metadata/upgrade jobs (never a dpkg install in progress) that hold the apt lock for too long
 release_apt_lock() {
   local max_age=$1 p a
-  for p in $(pgrep -f 'apt-get update|apt.systemd.daily|unattended-upgr|/usr/lib/apt/methods/' 2>/dev/null); do
+  # match by executable name, never by command-line text (the caller's own shell could contain it)
+  for p in $(pgrep -x apt-get; pgrep -x apt; pgrep -f '^/usr/lib/apt/methods/'; pgrep -f '/usr/lib/apt/apt.systemd.daily'; pgrep -f 'unattended-upgrade') ; do
+    [ "$p" = "$$" ] || [ "$p" = "$PPID" ] && continue
     a=$(age "$p"); [ -n "$a" ] || continue
     if [ "$a" -ge "$max_age" ]; then
       log "killing stuck package job pid $p (running ${a}s): $(ps -o args= -p "$p" | cut -c1-120)"
