@@ -17,6 +17,10 @@
     2. GET alertRuleTemplates, keep Scheduled/NRT templates whose requiredDataConnectors match the
        target connector set, PUT alertRules/<new-guid> with enabled:true.
     3. PUT settings/EntityAnalytics and settings/Ueba to enable UEBA over the chosen data sources.
+    4. Optionally PUT the Microsoft Defender XDR data connector (incidents + alerts).
+    5. Route Microsoft Entra ID logs (tenant diagnostic setting, microsoft.aadiam) and the Azure
+       Activity log (subscription diagnostic setting) to the workspace so those connectors show
+       Connected. Skip with -SkipLogRouting.
 
 .NOTES
   Rule templates that fail validation (a known handful reference preview tables/functions) are logged
@@ -42,7 +46,9 @@ param (
   ),
   [string[]]$UebaDataSources = @('AuditLogs', 'AzureActivity', 'SigninLogs', 'SecurityEvent'),
   [switch]$EnableXdrConnector,
-  [switch]$SkipUeba
+  [switch]$SkipUeba,
+  [switch]$SkipLogRouting,
+  [string]$DiagnosticSettingName = 'sentinel-lab'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -235,6 +241,36 @@ if ($EnableXdrConnector) {
       Write-Output 'Microsoft Defender XDR connector enabled (incidents + alerts).'
     }
   } catch { Write-Warning "XDR connector (may require portal consent): $($_.Exception.Message)" }
+}
+
+# ================= 5. Entra ID + Azure Activity log routing (diagnostic settings) =================
+# The Entra ID and Azure Activity connectors show "Connected" once their logs are routed to the
+# workspace. Both are diagnostic settings: tenant-level (microsoft.aadiam, needs Global/Security
+# Administrator) and subscription-level (Activity log). Same calls the connector pages make.
+if (-not $SkipLogRouting) {
+  $wsId = "/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.OperationalInsights/workspaces/$WorkspaceName"
+  Write-Output '--- Routing Microsoft Entra ID logs to the workspace (tenant diagnostic setting) ---'
+  $entraCats = @('AuditLogs', 'SignInLogs', 'NonInteractiveUserSignInLogs', 'ServicePrincipalSignInLogs',
+    'ManagedIdentitySignInLogs', 'ProvisioningLogs', 'RiskyUsers', 'UserRiskEvents')
+  $entraUri = "$arm/providers/microsoft.aadiam/diagnosticSettings/$DiagnosticSettingName`?api-version=2017-04-01-preview"
+  $sent = $false
+  foreach ($cats in @($entraCats, $entraCats[0..3])) {   # retry with the core categories if a tenant lacks the optional ones
+    try {
+      $body = @{ name = $DiagnosticSettingName; properties = @{ workspaceId = $wsId; logs = @($cats | ForEach-Object { @{ category = $_; enabled = $true } }) } }
+      Invoke-Arm PUT $entraUri $body | Out-Null
+      Write-Output "Entra ID logs routed: $($cats -join ', ')"; $sent = $true; break
+    } catch { $lastErr = $_.Exception.Message }
+  }
+  if (-not $sent) { Write-Warning "Entra ID diagnostic setting failed (needs Global/Security Administrator): $lastErr" }
+
+  Write-Output '--- Routing the Azure Activity log to the workspace (subscription diagnostic setting) ---'
+  try {
+    $actCats = @('Administrative', 'Security', 'ServiceHealth', 'Alert', 'Recommendation', 'Policy', 'Autoscale', 'ResourceHealth')
+    $actUri = "$arm/subscriptions/$SubscriptionId/providers/Microsoft.Insights/diagnosticSettings/$DiagnosticSettingName`?api-version=2021-05-01-preview"
+    $body = @{ properties = @{ workspaceId = $wsId; logs = @($actCats | ForEach-Object { @{ category = $_; enabled = $true } }) } }
+    Invoke-Arm PUT $actUri $body | Out-Null
+    Write-Output "Azure Activity log routed for subscription $SubscriptionId"
+  } catch { Write-Warning "Azure Activity diagnostic setting failed: $($_.Exception.Message)" }
 }
 
 Write-Output 'SENTINEL-CONTENT-STATUS: Success'
