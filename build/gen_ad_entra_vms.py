@@ -78,7 +78,7 @@ tmpl = {
         "serverImageVersion": {"type": "string", "defaultValue": "latest"},
         "clientImagePublisher": {"type": "string", "defaultValue": "MicrosoftWindowsDesktop"},
         "clientImageOffer": {"type": "string", "defaultValue": "windows-11"},
-        "clientImageSku": {"type": "string", "defaultValue": "win11-23h2-pro"},
+        "clientImageSku": {"type": "string", "defaultValue": "win11-24h2-pro"},
         "clientImageVersion": {"type": "string", "defaultValue": "latest"},
     },
     "variables": {
