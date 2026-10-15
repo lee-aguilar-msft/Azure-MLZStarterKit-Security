@@ -10,7 +10,7 @@
   Contributor on the workspace) or interactively in Cloud Shell. Uses the ARM REST API through the
   current Az context token so it works in both AzureCloud and AzureUSGovernment.
 
-  Method (proven on the RoadRunner commercial lab, ~170 rules enabled):
+  Method (proven on the commercial lab, ~170 rules enabled):
     1. GET contentProductPackages, then deploy each requested solution's packagedContent ARM template
        to the workspace resource group - that creates the package record, the data-connector
        definition and the analytics/workbook/playbook templates (what the portal's Install does).

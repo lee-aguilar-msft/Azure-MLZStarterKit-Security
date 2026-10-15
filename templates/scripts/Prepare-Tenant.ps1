@@ -14,6 +14,11 @@
      (-ExcludeIntuneEnrollmentFromCa). Report-only by default.
   4. Optionally assigns an Entra ID P1/P2 + Intune license to the synced lab user (-LabUserUpn), once
      Entra Connect has synced it. Re-run after the first sync if the user is not there yet.
+  5. -ConfigureMde: Intune side of Microsoft Defender for Endpoint onboarding - enables the Intune <->
+     MDE connector for Windows, creates a dynamic device group of the lab clients and an Endpoint
+     detection and response policy with onboarding package "Auto from connector" assigned to it.
+     PREREQUISITE (no API, one click): Defender portal (security.microsoft.us in GCC High) -> Settings ->
+     Endpoints -> Advanced features -> "Microsoft Intune connection" = On.
 
 .EXAMPLE
   ./Prepare-Tenant.ps1 -Cloud USGov
@@ -25,7 +30,10 @@ param(
   [string]$LabUserUpn = '',
   [string]$UsageLocation = 'US',
   [switch]$ExcludeIntuneEnrollmentFromCa,
-  [switch]$SkipMdm
+  [switch]$SkipMdm,
+  [switch]$ConfigureMde,
+  [string]$ClientNamePrefix = 'sdl-cl',   # dynamic device group rule: device.displayName -startsWith this
+  [string]$DeviceGroupName = 'LAB-Intune-Devices'
 )
 $ErrorActionPreference = 'Stop'
 
@@ -43,7 +51,8 @@ if (-not (Get-Module -ListAvailable Microsoft.Graph.Authentication)) {
 }
 Import-Module Microsoft.Graph.Authentication
 $scopes = @('Policy.ReadWrite.MobilityManagement', 'Application.ReadWrite.All', 'Policy.Read.All',
-  'Policy.ReadWrite.ConditionalAccess', 'User.ReadWrite.All', 'Organization.Read.All', 'Group.Read.All')
+  'Policy.ReadWrite.ConditionalAccess', 'User.ReadWrite.All', 'Organization.Read.All', 'Group.ReadWrite.All',
+  'DeviceManagementConfiguration.ReadWrite.All', 'DeviceManagementServiceConfig.ReadWrite.All')
 Write-Output "Connecting to Microsoft Graph ($Cloud). Complete the device-code sign-in in your browser."
 Connect-MgGraph -Environment $Cloud -Scopes $scopes -UseDeviceCode -NoWelcome
 $ctx = Get-MgContext
@@ -113,6 +122,78 @@ if ($LabUserUpn) {
         Invoke-MgGraphRequest -Method POST -Uri "v1.0/users/$($user.id)/assignLicense" -Body $lic -ContentType 'application/json' | Out-Null
       }
       Write-Output "License $($want.skuPartNumber) assigned to $LabUserUpn"
+    }
+  }
+}
+
+# ---------------- 5. Microsoft Defender for Endpoint via Intune (connector + EDR policy) ----------------
+if ($ConfigureMde) {
+  $mdeConnectorId = 'fc780465-2017-40d4-a0c5-307022471b92'   # Microsoft Defender for Endpoint MTD connector
+  $cUri = "beta/deviceManagement/mobileThreatDefenseConnectors/$mdeConnectorId"
+  $conn = $null
+  try { $conn = Invoke-MgGraphRequest -Method GET -Uri $cUri } catch { }
+  $cBody = @{ windowsEnabled = $true } | ConvertTo-Json
+  if ($conn) { Invoke-MgGraphRequest -Method PATCH -Uri $cUri -Body $cBody -ContentType 'application/json' | Out-Null }
+  else {
+    $cBody = @{ id = $mdeConnectorId; windowsEnabled = $true } | ConvertTo-Json
+    Invoke-MgGraphRequest -Method POST -Uri 'beta/deviceManagement/mobileThreatDefenseConnectors' -Body $cBody -ContentType 'application/json' | Out-Null
+  }
+  $conn = Invoke-MgGraphRequest -Method GET -Uri $cUri
+  Write-Output ("MDE connector: windowsEnabled={0} partnerState={1}" -f $conn.windowsEnabled, $conn.partnerState)
+  if ($conn.partnerState -notin @('enabled', 'available')) {
+    Write-Warning 'MDE connector partner state is not enabled yet - turn on "Microsoft Intune connection" in the Defender portal (Settings > Endpoints > Advanced features); it can take up to 15 minutes to show as enabled.'
+  }
+
+  # Dynamic device group for the lab clients
+  $grp = (Invoke-MgGraphRequest -Method GET -Uri "v1.0/groups?`$filter=displayName eq '$DeviceGroupName'").value | Select-Object -First 1
+  if (-not $grp) {
+    $gBody = @{
+      displayName = $DeviceGroupName; description = 'Lab Windows clients (dynamic) - Intune EDR / compliance targeting'
+      mailEnabled = $false; mailNickname = ($DeviceGroupName -replace '[^A-Za-z0-9]', ''); securityEnabled = $true
+      groupTypes = @('DynamicMembership'); membershipRule = "(device.displayName -startsWith `"$ClientNamePrefix`")"; membershipRuleProcessingState = 'On'
+    } | ConvertTo-Json
+    $grp = Invoke-MgGraphRequest -Method POST -Uri 'v1.0/groups' -Body $gBody -ContentType 'application/json'
+    Write-Output "Created dynamic device group $DeviceGroupName ($($grp.id))"
+  } else { Write-Output "Device group $DeviceGroupName present ($($grp.id))" }
+
+  # Endpoint detection and response policy - onboarding package "Auto from connector"
+  $edrName = 'LAB - Defender for Endpoint onboarding (auto from connector)'
+  $existing = (Invoke-MgGraphRequest -Method GET -Uri "beta/deviceManagement/configurationPolicies?`$filter=name eq '$edrName'").value | Select-Object -First 1
+  if ($existing) { Write-Output "EDR policy present ($($existing.id))" }
+  else {
+    try {
+      $tpl = (Invoke-MgGraphRequest -Method GET -Uri "beta/deviceManagement/configurationPolicyTemplates?`$filter=templateFamily eq 'endpointSecurityEndpointDetectionAndResponse'").value |
+        Where-Object { $_.platforms -match 'windows' -and $_.lifecycleState -eq 'active' } | Select-Object -First 1
+      $st = (Invoke-MgGraphRequest -Method GET -Uri "beta/deviceManagement/configurationPolicyTemplates('$($tpl.id)')/settingTemplates?`$expand=settingDefinitions").value
+      $cfgType = $st | Where-Object { $_.settingInstanceTemplate.settingDefinitionId -eq 'device_vendor_msft_windowsadvancedthreatprotection_configurationtype' } | Select-Object -First 1
+      $body = @{
+        name = $edrName; description = 'Created by Prepare-Tenant.ps1 (MLZ Security Lab)'; platforms = 'windows10'; technologies = 'mdm,microsoftSense'
+        templateReference = @{ templateId = $tpl.id }
+        settings = @(@{
+          '@odata.type' = '#microsoft.graph.deviceManagementConfigurationSetting'
+          settingInstance = @{
+            '@odata.type' = '#microsoft.graph.deviceManagementConfigurationChoiceSettingInstance'
+            settingDefinitionId = 'device_vendor_msft_windowsadvancedthreatprotection_configurationtype'
+            settingInstanceTemplateReference = @{ settingInstanceTemplateId = $cfgType.settingInstanceTemplate.settingInstanceTemplateId }
+            choiceSettingValue = @{
+              value = 'device_vendor_msft_windowsadvancedthreatprotection_configurationtype_autofromconnector'
+              settingValueTemplateReference = @{ settingValueTemplateId = $cfgType.settingInstanceTemplate.choiceSettingValueTemplate.settingValueTemplateId }
+              children = @(@{
+                '@odata.type' = '#microsoft.graph.deviceManagementConfigurationSimpleSettingInstance'
+                settingDefinitionId = 'device_vendor_msft_windowsadvancedthreatprotection_onboarding_fromconnector'
+                simpleSettingValue = @{ '@odata.type' = '#microsoft.graph.deviceManagementConfigurationSecretSettingValue'; value = 'Microsoft ATP connector enabled'; valueState = 'notEncrypted' }
+              })
+            }
+          }
+        })
+      } | ConvertTo-Json -Depth 20
+      $edr = Invoke-MgGraphRequest -Method POST -Uri 'beta/deviceManagement/configurationPolicies' -Body $body -ContentType 'application/json'
+      $assign = @{ assignments = @(@{ target = @{ '@odata.type' = '#microsoft.graph.groupAssignmentTarget'; groupId = $grp.id } }) } | ConvertTo-Json -Depth 6
+      Invoke-MgGraphRequest -Method POST -Uri "beta/deviceManagement/configurationPolicies/$($edr.id)/assign" -Body $assign -ContentType 'application/json' | Out-Null
+      Write-Output "Created EDR policy '$edrName' ($($edr.id)) assigned to $DeviceGroupName"
+    } catch {
+      Write-Warning "EDR policy not created automatically: $($_.Exception.Message)"
+      Write-Warning "Create it in Intune: Endpoint security > Endpoint detection and response > Create policy > Windows > EDR > 'Microsoft Defender for Endpoint client configuration package type' = Auto from connector; assign to $DeviceGroupName."
     }
   }
 }

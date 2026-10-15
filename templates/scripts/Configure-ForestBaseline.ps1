@@ -2,7 +2,7 @@ param (
   [Parameter(Mandatory = $true)] [string]$DomainName,
   [Parameter(Mandatory = $true)] [string]$DomainNetbiosName,
   [Parameter(Mandatory = $true)] [string]$OuRoot,            # e.g. LAB
-  [string]$UpnSuffix = '',                                   # e.g. sleepingdragonslab.us (verified Entra domain)
+  [string]$UpnSuffix = '',                                   # e.g. contoso.us (verified Entra domain)
   [string]$LabUserName = 'lab.user',
   [string]$LabUserPassword = '',
   [string]$LabUserDisplayName = 'Lab User',
