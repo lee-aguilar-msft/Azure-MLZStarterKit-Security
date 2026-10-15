@@ -119,7 +119,7 @@ R.append({
 R.append({
     "type": "Microsoft.Insights/dataCollectionRules", "apiVersion": "2022-06-01",
     "name": "[variables('linuxDcrName')]", "location": "[parameters('location')]",
-    "condition": "[not(empty(parameters('linuxVmNames')))]",
+    "condition": "[not(empty(variables('lnxNames')))]",
     # The DCE is conditional; ARM ignores dependsOn entries for resources that are not deployed.
     "dependsOn": [
         "[variables('workspaceResourceId')]",
