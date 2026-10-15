@@ -11,8 +11,9 @@
   current Az context token so it works in both AzureCloud and AzureUSGovernment.
 
   Method (proven on the RoadRunner commercial lab, ~170 rules enabled):
-    1. GET contentProductPackages, install the requested solutions via PUT contentPackages/<id>
-       passing the entire package .properties object.
+    1. GET contentProductPackages, register the requested solutions via PUT contentPackages/<id>
+       (writable properties only), then deploy each solution's packagedContent ARM template to the
+       workspace resource group - that is what creates the data-connector definitions and templates.
     2. GET alertRuleTemplates, keep Scheduled/NRT templates whose requiredDataConnectors match the
        target connector set, PUT alertRules/<new-guid> with enabled:true.
     3. PUT settings/EntityAnalytics and settings/Ueba to enable UEBA over the chosen data sources.
@@ -78,8 +79,9 @@ function Invoke-Arm {
   }
 }
 
+$wsLocation = (Get-AzOperationalInsightsWorkspace -ResourceGroupName $ResourceGroupName -Name $WorkspaceName).Location
 Write-Output "ARM endpoint: $arm"
-Write-Output "Workspace   : $WorkspaceName ($ResourceGroupName)"
+Write-Output "Workspace   : $WorkspaceName ($ResourceGroupName, $wsLocation)"
 
 # ================= 1. Install content hub solutions =================
 Write-Output '--- Installing Content Hub solutions ---'
@@ -107,7 +109,28 @@ foreach ($want in $Solutions) {
   try {
     Invoke-Arm PUT $installUri $installBody | Out-Null
     Write-Output "Installed: $($pp.displayName) [$pkgId]"
-  } catch { Write-Warning "Install failed for $want : $($_.Exception.Message)" }
+  } catch { Write-Warning "Install failed for $want : $($_.Exception.Message)"; continue }
+
+  # Registering the package only marks it 'Installed' in Content Hub. The solution's content items
+  # (data connector definition, analytics/workbook/playbook templates) come from its packaged ARM
+  # template - deploying it is exactly what the portal's Install button does.
+  try {
+    $detail = Invoke-Arm GET "$base/contentProductPackages/$pkgId`?api-version=$apiContent"
+    if (-not ($detail.properties.PSObject.Properties.Name -contains 'packagedContent') -or -not $detail.properties.packagedContent) {
+      Write-Warning "No packaged content returned for $want - open Content hub and click Install."; continue
+    }
+    $tpl = $detail.properties.packagedContent
+    $tplFile = Join-Path ([IO.Path]::GetTempPath()) "$pkgId.json"
+    $tpl | ConvertTo-Json -Depth 100 | Set-Content -Path $tplFile -Encoding utf8
+    $tplParams = @{}
+    $pnames = @($tpl.parameters.PSObject.Properties.Name)
+    if ($pnames -contains 'workspace') { $tplParams['workspace'] = $WorkspaceName }
+    if ($pnames -contains 'workspace-location') { $tplParams['workspace-location'] = $wsLocation }
+    $short = $want -replace '^azure-sentinel-solution-', ''
+    $depName = ('sentinel-' + $short.Substring(0, [Math]::Min(30, $short.Length)) + '-' + (Get-Date -Format 'yyyyMMddHHmm'))
+    New-AzResourceGroupDeployment -Name $depName -ResourceGroupName $ResourceGroupName -TemplateFile $tplFile -TemplateParameterObject $tplParams -ErrorAction Stop | Out-Null
+    Write-Output "  content deployed: $($pp.displayName) (deployment $depName)"
+  } catch { Write-Warning "Content deployment for $want failed: $($_.Exception.Message)" }
 }
 
 Start-Sleep -Seconds 30   # let template records populate
@@ -169,6 +192,8 @@ if ($EnableXdrConnector) {
   Write-Output '--- Enabling Microsoft Defender XDR data connector ---'
   try {
     $tenantId = $ctx.Tenant.Id
+    $existing = (Invoke-Arm GET "$base/dataConnectors?api-version=$apiRules").value | Where-Object { $_.kind -eq 'MicrosoftThreatProtection' }
+    if ($existing) { Write-Output "Microsoft Defender XDR connector already present ($($existing[0].name)) - skipping."; $skipXdr = $true } else { $skipXdr = $false }
     $xdrUri = "$base/dataConnectors/$([guid]::NewGuid())?api-version=$apiRules"
     $xdrBody = @{
       kind = 'MicrosoftThreatProtection'
@@ -181,8 +206,10 @@ if ($EnableXdrConnector) {
         }
       }
     }
-    Invoke-Arm PUT $xdrUri $xdrBody | Out-Null
-    Write-Output 'Microsoft Defender XDR connector enabled (incidents + alerts).'
+    if (-not $skipXdr) {
+      Invoke-Arm PUT $xdrUri $xdrBody | Out-Null
+      Write-Output 'Microsoft Defender XDR connector enabled (incidents + alerts).'
+    }
   } catch { Write-Warning "XDR connector (may require portal consent): $($_.Exception.Message)" }
 }
 
