@@ -6,7 +6,7 @@ param (
   [string]$HydrationScriptBase64 = '',
   [string]$HydrationIntervalMinutes = '60',
   [string]$CloudSuffix = 'us',                              # 'us' = Azure Government / GCC High; 'com' = commercial
-  [string]$EntraConnectDownloadUrl = 'https://download.microsoft.com/download/B/0/0/B00291D0-5A83-4DE7-86F5-980BC00DE05A/AzureADConnect.msi'
+  [string]$EntraConnectDownloadUrl = ''                     # empty = do not pre-install (see the Entra Connect section below)
 )
 
 $ErrorActionPreference = 'Continue'
@@ -95,23 +95,31 @@ if ($Role -eq 'EntraConnectServer') {
       New-ItemProperty -Path $p -Name Enabled -Value 1 -PropertyType DWord -Force | Out-Null
       New-ItemProperty -Path $p -Name DisabledByDefault -Value 0 -PropertyType DWord -Force | Out-Null
     }
-    $msi = 'C:\LabTools\AzureADConnect.msi'
-    if (-not (Test-Path $msi)) { Invoke-WebRequest -Uri $EntraConnectDownloadUrl -OutFile $msi -UseBasicParsing }
-    # Install the bits only (the configuration wizard needs a Hybrid Identity Administrator + MFA and is interactive)
-    Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait
+    # The public download link (download.microsoft.com ...AzureADConnect.msi) still serves 2.4.x, which Microsoft
+    # retired on 30 Sep 2026 (minimum 2.5.79.0). Current builds are downloaded from the Entra admin center while
+    # signed in, so the lab no longer pre-installs anything unless an explicit MSI URL is passed.
+    if ($EntraConnectDownloadUrl) {
+      $msi = 'C:\LabTools\AzureADConnect.msi'
+      if (-not (Test-Path $msi)) { Invoke-WebRequest -Uri $EntraConnectDownloadUrl -OutFile $msi -UseBasicParsing }
+      Start-Process msiexec.exe -ArgumentList "/i `"$msi`" /qn /norestart" -Wait
+    }
+    $portal = if ($CloudSuffix -eq 'us') { 'https://portal.azure.us' } else { 'https://portal.azure.com' }
     $readme = @"
-Entra Connect is installed but NOT configured (that step needs your Hybrid Identity Administrator credentials + MFA).
-1. Sign in to this server through Bastion with your Entra account.
-2. Run 'Microsoft Entra Connect' from the Start menu -> Customize -> Password Hash Synchronization.
-3. Connect to Microsoft Entra ID using the $(if ($CloudSuffix -eq 'us') { 'Azure US Government' } else { 'Azure Commercial' }) endpoints (the wizard picks them from the tenant).
-4. Domain/OU filtering: sync ONLY the lab root OU.
-5. Optional features: Password hash sync, Password writeback (needs P1/P2).
-6. Device options -> Configure Hybrid Microsoft Entra join -> Windows 10 or later -> select this forest -> authentication service: Microsoft Entra ID.
-7. After the first sync: C:\LabTools\Invoke-HybridJoinCycle.ps1 (see docs/RUNBOOK.md).
-BEFORE enabling sync, create the cloud-only break-glass Global Admin and exclude it from Conditional Access (lesson #3).
+Microsoft Entra Connect Sync - install and configure (needs your Hybrid Identity Administrator / Global Admin + MFA).
+Use version 2.5.79.0 or later; older builds were retired on 30 September 2026.
+1. On this server open Edge -> $portal -> Microsoft Entra ID -> Microsoft Entra Connect -> Get started -> Manage
+   -> 'Download Connect Sync Agent', and run the downloaded installer.
+2. Wizard: Customize -> install required components -> Password Hash Synchronization.
+3. Connect to Microsoft Entra ID with a Hybrid Identity Administrator / Global Administrator (MFA).
+4. Add the forest $DomainName with $DomainNetbiosName\<domain admin> and let the wizard create the AD DS connector account.
+5. If the UPN suffix is not a verified domain: tick 'Continue without matching all UPN suffixes to verified domains'.
+6. Domain/OU filtering: sync ONLY the lab root OU. Device options: nothing needed (the deployment wrote the hybrid-join SCP).
+7. Tick 'Start the synchronization process when configuration completes'.
+8. After the first sync: C:\LabTools\Invoke-HybridJoinCycle.ps1 -ClientNames <prefix>-cl01,<prefix>-cl02,<prefix>-cl03
+BEFORE enabling sync, create the cloud-only break-glass Global Admin and exclude it from Conditional Access.
 "@
     Set-Content -Path 'C:\LabTools\README-EntraConnect.txt' -Value $readme
-    Write-Output 'Entra Connect installer staged and bits installed (configuration pending)'
+    Write-Output 'Entra Connect: TLS 1.2 set and README-EntraConnect.txt written (install from the Entra admin center)'
   } catch { Write-Warning "Entra Connect staging: $($_.Exception.Message)" }
 }
 
