@@ -30,6 +30,7 @@ def b64(name):
 promote_ps1 = rd("Promote-DomainController.ps1")
 baseline_ps1 = rd("Configure-ForestBaseline.ps1")
 join_ps1 = rd("Join-Domain.ps1")
+verify_ps1 = rd("Verify-Forest.ps1")
 configure_ps1 = rd("Configure-WindowsMember.ps1")
 configure_linux_sh = rd("configure-linux.sh")
 prep_linux_sh = rd("prep-linux.sh")
@@ -84,6 +85,7 @@ tmpl = {
         "promoteScript": promote_ps1,
         "baselineScript": baseline_ps1,
         "joinScript": join_ps1,
+        "verifyScript": verify_ps1,
         "configureScript": configure_ps1,
         "configureLinuxScript": configure_linux_sh,
         "prepLinuxScript": prep_linux_sh,
@@ -108,6 +110,9 @@ tmpl = {
             {"name": "[format('{0}-sles01', parameters('prefix'))]", "image": {"publisher": "SUSE", "offer": "sles-15-sp5", "sku": "gen2", "version": "latest"}},
         ],
         "memberWinCount": 5,
+        # Computer names (15-char NetBIOS) the baseline places into OUs and the verify step checks.
+        "serverComputers": "[format('{0},{1}', take(format('{0}-ms01', parameters('prefix')), 15), take(format('{0}-ms02', parameters('prefix')), 15))]",
+        "workstationComputers": "[format('{0},{1},{2}', take(format('{0}-cl01', parameters('prefix')), 15), take(format('{0}-cl02', parameters('prefix')), 15), take(format('{0}-cl03', parameters('prefix')), 15))]",
     },
     "resources": [],
 }
@@ -168,8 +173,9 @@ R.append({
     "location": "[parameters('location')]",
     "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[0].name)]"],
     "properties": {
-        # async: the script reboots the DC to finish promotion. Durable run-commands resume after the
-        # reboot; the configure-forest-baseline step (sync) is the real gate and waits for AD to be up.
+        # async: the script reboots the DC to finish promotion. Nothing else runs on the DC until every
+        # member has joined (the joins wait for LDAP + DNS SRV, which only answer after that reboot), so no
+        # later DC step can be killed by the promotion reboot (the run-3 failure).
         "asyncExecution": True,
         "treatFailureAsDeploymentFailure": False,
         "timeoutInSeconds": 3600,
@@ -188,10 +194,10 @@ R.append({
     "type": "Microsoft.Compute/virtualMachines/runCommands", "apiVersion": "2023-09-01",
     "name": "[format('{0}/configure-forest-baseline', variables('windowsVms')[0].name)]",
     "location": "[parameters('location')]",
-    "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines/runCommands', variables('windowsVms')[0].name, 'promote-domain-controller')]"],
+    "dependsOn": ["joinLoop"],
     "properties": {
         "asyncExecution": False,
-        "treatFailureAsDeploymentFailure": False,
+        "treatFailureAsDeploymentFailure": True,
         "timeoutInSeconds": 3600,
         "source": {"script": "[variables('baselineScript')]"},
         "parameters": [
@@ -206,6 +212,10 @@ R.append({
             {"name": "CreateIntuneGpo", "value": "true"},
             {"name": "HydrationScriptBase64", "value": "[if(parameters('deployHydration'), variables('hydrateWinB64'), '')]"},
             {"name": "HydrationIntervalMinutes", "value": "[parameters('hydrationIntervalMinutes')]"},
+            {"name": "TenantId", "value": "[subscription().tenantId]"},
+            {"name": "TenantDomain", "value": "[parameters('upnSuffix')]"},
+            {"name": "ServerComputers", "value": "[variables('serverComputers')]"},
+            {"name": "WorkstationComputers", "value": "[variables('workstationComputers')]"},
         ],
         "protectedParameters": [
             {"name": "LabUserPassword", "value": "[parameters('labUserPassword')]"},
@@ -221,19 +231,20 @@ R.append({
     "location": "[parameters('location')]",
     "copy": {"name": "joinLoop", "count": "[variables('memberWinCount')]"},
     "dependsOn": [
-        "[resourceId('Microsoft.Compute/virtualMachines/runCommands', variables('windowsVms')[0].name, 'configure-forest-baseline')]",
+        "[resourceId('Microsoft.Compute/virtualMachines/runCommands', variables('windowsVms')[0].name, 'promote-domain-controller')]",
         "[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].name)]",
     ],
     "properties": {
+        # Joins the default Computers container; the baseline (which runs after all joins) moves each
+        # machine into OU=MemberServers / OU=Workstations. A failed join now fails the deployment.
         "asyncExecution": False,
-        "treatFailureAsDeploymentFailure": False,
-        "timeoutInSeconds": 2700,
+        "treatFailureAsDeploymentFailure": True,
+        "timeoutInSeconds": 3600,
         "source": {"script": "[variables('joinScript')]"},
         "parameters": [
             {"name": "DomainName", "value": "[parameters('domainName')]"},
             {"name": "DomainAdminUsername", "value": "[parameters('adminUsername')]"},
             {"name": "DomainControllerIp", "value": "[parameters('domainControllerPrivateIp')]"},
-            {"name": "OUPath", "value": "[if(variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].isServer, format('OU=MemberServers,OU={0},{1}', parameters('ouRoot'), variables('domainDn')), format('OU=Workstations,OU={0},{1}', parameters('ouRoot'), variables('domainDn')))]"},
         ],
         "protectedParameters": [{"name": "DomainAdminPassword", "value": "[parameters('adminPassword')]"}],
     },
@@ -245,7 +256,10 @@ R.append({
     "name": "[format('{0}/configure-member', variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].name)]",
     "location": "[parameters('location')]",
     "copy": {"name": "configureLoop", "count": "[variables('memberWinCount')]"},
-    "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines/runCommands', variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].name, 'join-domain')]"],
+    "dependsOn": [
+        "[resourceId('Microsoft.Compute/virtualMachines/runCommands', variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].name, 'join-domain')]",
+        "[resourceId('Microsoft.Compute/virtualMachines/runCommands', variables('windowsVms')[0].name, 'configure-forest-baseline')]",
+    ],
     "properties": {
         "asyncExecution": True,
         "treatFailureAsDeploymentFailure": False,
@@ -263,15 +277,32 @@ R.append({
     },
 })
 
-# ---- AAD login extension (Windows) ----
+# ---- verify-forest: final gate on the DC; fails the deployment if the forest is not usable ----
 R.append({
-    "type": "Microsoft.Compute/virtualMachines/extensions", "apiVersion": "2023-09-01",
-    "name": "[format('{0}/AADLoginForWindows', variables('windowsVms')[copyIndex()].name)]",
+    "type": "Microsoft.Compute/virtualMachines/runCommands", "apiVersion": "2023-09-01",
+    "name": "[format('{0}/verify-forest', variables('windowsVms')[0].name)]",
     "location": "[parameters('location')]",
-    "copy": {"name": "aadWinLoop", "count": "[length(variables('windowsVms'))]"},
-    "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[copyIndex()].name)]"],
-    "properties": {"publisher": "Microsoft.Azure.ActiveDirectory", "type": "AADLoginForWindows", "typeHandlerVersion": "2.2", "autoUpgradeMinorVersion": True},
+    "dependsOn": ["configureLoop"],
+    "properties": {
+        "asyncExecution": False,
+        "treatFailureAsDeploymentFailure": True,
+        "timeoutInSeconds": 900,
+        "source": {"script": "[variables('verifyScript')]"},
+        "parameters": [
+            {"name": "DomainName", "value": "[parameters('domainName')]"},
+            {"name": "OuRoot", "value": "[parameters('ouRoot')]"},
+            {"name": "ServerComputers", "value": "[variables('serverComputers')]"},
+            {"name": "WorkstationComputers", "value": "[variables('workstationComputers')]"},
+            {"name": "RequireScp", "value": "[if(empty(parameters('upnSuffix')), 'false', 'true')]"},
+        ],
+    },
 })
+
+# ---- No AADLoginForWindows on the Windows VMs ----
+# AADLoginForWindows makes a VM *Microsoft Entra joined*, which cannot coexist with the AD domain join /
+# hybrid Entra join this lab is built to exercise. Windows machines get their Entra identity through
+# hybrid join (Entra Connect); Bastion sign-in to them uses AD credentials. Entra sign-in through
+# Bastion is used for the Linux servers (AADSSHLoginForLinux, GA in the portal).
 
 # ---- AMA (Windows) ----
 R.append({
@@ -279,7 +310,7 @@ R.append({
     "name": "[format('{0}/AzureMonitorWindowsAgent', variables('windowsVms')[copyIndex()].name)]",
     "location": "[parameters('location')]",
     "copy": {"name": "amaWinLoop", "count": "[length(variables('windowsVms'))]"},
-    "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines/extensions', variables('windowsVms')[copyIndex()].name, 'AADLoginForWindows')]"],
+    "dependsOn": ["[resourceId('Microsoft.Compute/virtualMachines', variables('windowsVms')[copyIndex()].name)]"],
     "properties": {"publisher": "Microsoft.Azure.Monitor", "type": "AzureMonitorWindowsAgent", "typeHandlerVersion": "1.0", "autoUpgradeMinorVersion": True, "enableAutomaticUpgrade": True},
 })
 
