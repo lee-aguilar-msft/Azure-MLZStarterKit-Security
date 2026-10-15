@@ -55,7 +55,7 @@ if ($PrepareTenant) {
 Write-Host "`n[3/3] The one interactive step - Microsoft Entra Connect on <prefix>-ms01 (needs your MFA):" -ForegroundColor Yellow
 @'
   0. Break-glass first: a cloud-only Global Admin, excluded from all Conditional Access policies.
-  1. Bastion -> <prefix>-ms01 -> RDP with CORP\<admin> (the AD admin from the deployment form).
+  1. Bastion -> <prefix>-ms01 -> VM password, user <admin>@<AD domain> (UPN form; Bastion rejects CORP\<admin>).
   2. Start "Microsoft Entra Connect" (already installed) -> Customize -> Password Hash Synchronization.
   3. Sign in to Entra with a Hybrid Identity / Global Admin (MFA). Add the forest with CORP\<admin>.
   4. Domain/OU filtering: the lab root OU only. Device options: nothing to do - the deployment already
