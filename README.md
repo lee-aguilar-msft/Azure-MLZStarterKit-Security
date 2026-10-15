@@ -70,6 +70,10 @@ Resource Manager each have a resource to assess. Each piece is a toggle (`deploy
 
 ## Deploy
 
+> **New to the kit?** Follow the step-by-step [Implementation Guide](docs/IMPLEMENTATION.md) — it walks
+> an operator from an empty Azure Government subscription to Sentinel connectors, analytics rules and
+> UEBA, with screenshots from a real run and a troubleshooting table of every error hit on the way.
+
 ### Option A — Portal (blue button)
 
 Azure Government:
