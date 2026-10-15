@@ -2,7 +2,7 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
   "metadata": {
-    "comment": "Azure Government / GCC High lab (primary). First smoke test: subscription 9b93f80f-8939-4140-b69e-51a1b486a546, everything on except API Management (deployCspmApiManagement=false). Secrets blank - supply at deploy time."
+    "comment": "Azure Government / GCC High lab (primary). everything on except API Management (deployCspmApiManagement=false). Secrets blank - supply at deploy time."
   },
   "parameters": {
     "location": {
@@ -45,22 +45,22 @@
       "value": ""
     },
     "domainName": {
-      "value": "corp.sleepingdragonslab.us"
+      "value": "corp.contoso.lab"
     },
     "domainNetbiosName": {
       "value": "CORP"
     },
     "upnSuffix": {
-      "value": "sleepingdragonslab.us"
+      "value": "contoso.us"
     },
     "labUserName": {
-      "value": "lee.aguilar"
+      "value": "lab.user"
     },
     "labUserPassword": {
       "value": ""
     },
     "entraLoginPrincipalId": {
-      "value": "e4c5aa7c-5f56-47ef-a913-4c465c007a22"
+      "value": "00000000-0000-0000-0000-000000000000"
     },
     "entraPrincipalType": {
       "value": "Group"
@@ -141,7 +141,7 @@
       "value": false
     },
     "emailSecurityContact": {
-      "value": "soc@sleepingdragonslab.us"
+      "value": "soc@contoso.us"
     },
     "deployCspmApiManagement": {
       "value": false

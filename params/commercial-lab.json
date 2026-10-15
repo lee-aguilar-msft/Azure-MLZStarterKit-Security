@@ -4,11 +4,11 @@
   "metadata": { "comment": "Azure Commercial lab. Deploy at subscription scope in portal.azure.com or `az deployment sub create`. Secrets blank — supply at deploy time." },
   "parameters": {
     "location": { "value": "eastus" },
-    "identifier": { "value": "rrs" },
+    "identifier": { "value": "lab" },
     "environmentAbbreviation": { "value": "dev" },
     "workloadName": { "value": "seclab" },
     "workloadShortName": { "value": "lab" },
-    "prefix": { "value": "rrs" },
+    "prefix": { "value": "lab" },
     "cloudSuffix": { "value": "com" },
     "virtualNetworkAddressPrefix": { "value": "10.20.0.0/24" },
     "subnetAddressPrefix": { "value": "10.20.0.0/25" },
@@ -16,10 +16,10 @@
     "adminUsername": { "value": "labadmin" },
     "adminPassword": { "value": "" },
     "safeModeAdminPassword": { "value": "" },
-    "domainName": { "value": "corp.roadrunnersecure.com" },
+    "domainName": { "value": "corp.contoso.com" },
     "domainNetbiosName": { "value": "CORP" },
-    "upnSuffix": { "value": "roadrunnersecure.com" },
-    "labUserName": { "value": "lee.aguilar" },
+    "upnSuffix": { "value": "contoso.com" },
+    "labUserName": { "value": "lab.user" },
     "labUserPassword": { "value": "" },
     "entraLoginPrincipalId": { "value": "" },
     "entraPrincipalType": { "value": "Group" },
@@ -42,13 +42,13 @@
     "deployPolicy": { "value": false },
     "deployActivityLogDiagnosticSetting": { "value": true },
     "deploySentinel": { "value": true },
-    "customWorkspaceName": { "value": "rrs-law-lab" },
+    "customWorkspaceName": { "value": "lab-law-lab" },
     "enableSentinelAnalytics": { "value": true },
     "deploySentinelContentScript": { "value": false },
     "enableXdrConnector": { "value": true },
     "usePrivateIngestion": { "value": false },
     "deployArcPrivateLink": { "value": true },
     "deployPrivateDnsResolver": { "value": false },
-    "emailSecurityContact": { "value": "soc@roadrunnersecure.com" }
+    "emailSecurityContact": { "value": "soc@contoso.com" }
   }
 }
