@@ -13,7 +13,7 @@
               "name": "description",
               "type": "Microsoft.Common.TextBlock",
               "options": {
-                "text": "Deploys the MLZ hub + Tier3 network, an AD forest lab (1 DC, 2 member servers, 3 Windows 11 clients), 3 Linux servers (RHEL/Ubuntu/SLES) with Entra SSH login, Entra VM sign-in, Azure Monitor Agent, Microsoft Sentinel, Azure Arc private link, cloud-aware firewall rules, and CSPM coverage resources."
+                "text": "Deploys the MLZ hub + Tier3 network, an AD forest lab (1 DC, 2 member servers, 3 Windows 11 clients), 3 Linux servers (RHEL/Ubuntu/SLES) with Entra SSH login, hybrid Entra join + Intune auto-enrollment for the Windows clients, Azure Monitor Agent, Microsoft Sentinel, Azure Arc private link, cloud-aware firewall rules, and CSPM coverage resources."
               }
             },
             {
@@ -651,6 +651,23 @@
               }
             },
             {
+              "name": "labUserPassword",
+              "type": "Microsoft.Common.PasswordBox",
+              "label": {
+                "password": "Lab User Password (optional)",
+                "confirmPassword": "Confirm Lab User Password"
+              },
+              "toolTip": "Password for the AD lab user (Lab Options tab). Leave blank for a random password you reset later on the DC (Set-ADAccountPassword).",
+              "constraints": {
+                "required": false,
+                "regex": "^$|^(?=.*?[A-Z])(?=.*?[a-z])(?=.*?[0-9])(?=.*?[#?!@$%^&*-]).{12,72}$",
+                "validationMessage": "Use 12-72 chars with upper/lower/number/special, or leave blank."
+              },
+              "options": {
+                "hideConfirmation": false
+              }
+            },
+            {
               "name": "domainName",
               "type": "Microsoft.Common.TextBox",
               "label": "Domain Name",
@@ -890,7 +907,7 @@
               "toolTip": "Marketplace client image SKU. 24H2 is the current Windows 11 release and recommended for Azure Government.",
               "constraints": {
                 "required": true,
-                "allowedValues": "[if(equals(steps('remoteAccess').clientImageOffer, 'windows-10'), parse('[{\"label\":\"Windows 10 Pro 22H2\",\"value\":\"win10-22h2-pro\"},{\"label\":\"Windows 10 Enterprise 22H2\",\"value\":\"win10-22h2-ent\"}]'), parse('[{\"label\":\"Windows 11 Pro 24H2 (recommended)\",\"value\":\"win11-24h2-pro\"},{\"label\":\"Windows 11 Enterprise 24H2\",\"value\":\"win11-24h2-ent\"},{\"label\":\"Windows 11 Pro 23H2\",\"value\":\"win11-23h2-pro\"},{\"label\":\"Windows 11 Enterprise 23H2\",\"value\":\"win11-23h2-ent\"}]'))]"
+                "allowedValues": "[if(equals(steps('remoteAccess').clientImageOffer, 'windows-10'), parse('[{\"label\":\"Windows 10 Pro 22H2\",\"value\":\"win10-22h2-pro\"},{\"label\":\"Windows 10 Enterprise 22H2\",\"value\":\"win10-22h2-ent\"}]'), parse('[{\"label\":\"Windows 11 Pro 24H2 (recommended)\",\"value\":\"win11-24h2-pro\"},{\"label\":\"Windows 11 Enterprise 24H2\",\"value\":\"win11-24h2-ent\"}]'))]"
               }
             },
             {
@@ -1101,7 +1118,7 @@
         "cloudSuffix": "[if(or(contains(steps('basics').resourceScope.location.name, 'usgov'), contains(steps('basics').resourceScope.location.name, 'usdod')), 'us', 'com')]",
         "upnSuffix": "[steps('labOptions').upnSuffix]",
         "labUserName": "[steps('labOptions').labUserName]",
-        "labUserPassword": "",
+        "labUserPassword": "[steps('identity').labUserPassword]",
         "deployLinuxVms": "[steps('labOptions').deployLinuxVms]",
         "deployFirewallRules": "[steps('labOptions').deployFirewallRules]",
         "allowAllAzureServiceTags": "[steps('labOptions').allowAllAzureServiceTags]",
