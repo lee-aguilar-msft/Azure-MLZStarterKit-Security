@@ -42,6 +42,25 @@ V["entraFqdnsGov"] = ["login.microsoftonline.us", "device.login.microsoftonline.
     "autologon.microsoftazuread-sso.com", "*.wns.windows.com", "login.live.com"]
 V["entraFqdnsCom"] = ["login.microsoftonline.com", "device.login.microsoftonline.com", "enterpriseregistration.windows.net",
     "autologon.microsoftazuread-sso.com", "login.live.com"]
+# Administration from inside the lab: the Azure portal (to download Entra Connect Sync from the Entra admin
+# center) and the Entra Connect Sync service endpoints. Portal list = learn.microsoft.com "Allow the Azure
+# portal URLs on your firewall or proxy server" (U.S. Government Cloud tab); Entra Connect list = "Hybrid identity
+# considerations for Azure Government cloud" + "Hybrid Identity required ports and protocols".
+V["adminFqdnsGov"] = ["*.applicationinsights.us", "*.azure.us", "azure.us", "*.azureedge.net", "*.azureedge.us",
+    "*.loganalytics.us", "*.microsoft.us", "*.microsoftonline.us", "*.msauth.net", "*.msidentity.us", "*.s-microsoft.com",
+    "*.usgovcloudapi.net", "*.usgovtrafficmanager.net", "*.windowsazure.us", "graph.microsoftazure.us",
+    "main.ff.marketplacedataprovider.azure.us",
+    "*.msappproxy.us", "login.windows.us", "secure.aadcdn.microsoftonline-p.com", "*.microsoftonline-p.us",
+    "*.msauthimages.net", "*.msecnd.net", "*.msftauth.net", "*.msftauthimages.net", "*.phonefactor.net",
+    "enterpriseregistration.windows.net", "policykeyservice.dc.ad.msft.net", "ocsp.msocsp.us", "ctldl.windowsupdate.us",
+    "download.microsoft.com", "*.download.microsoft.com", "go.microsoft.com", "aka.ms"]
+V["adminFqdnsCom"] = ["login.microsoft.com", "login.microsoftonline.com", "login.live.com", "*.aadcdn.msftauth.net",
+    "*.aadcdn.msftauthimages.net", "*.aadcdn.msauthimages.net", "*.logincdn.msftauth.net", "*.msauth.net",
+    "*.aadcdn.microsoftonline-p.com", "*.microsoftonline-p.com", "*.portal.azure.com", "portal.azure.com",
+    "*.hosting.portal.azure.net", "*.hosting-ms.portal.azure.net", "*.reactblade.portal.azure.net", "management.azure.com",
+    "*.ext.azure.com", "*.graph.windows.net", "*.graph.microsoft.com", "hosting.partners.azure.net",
+    "*.microsoftonline.com", "*.msappproxy.net", "*.servicebus.windows.net", "*.msftauth.net", "*.msecnd.net",
+    "download.microsoft.com", "*.download.microsoft.com", "go.microsoft.com", "aka.ms", "catalogartifact.azureedge.net"]
 V["linuxRepoFqdns"] = ["packages.microsoft.com",
     # Azure RHUI (RHEL PAYG images pull everything from here; blocked = AADSSHLoginForLinux install fails)
     "rhui-1.microsoft.com", "rhui-2.microsoft.com", "rhui-3.microsoft.com", "rhui-4.microsoft.com",
@@ -94,6 +113,7 @@ application_rules = [
     app_rule("Allow-Entra-DeviceReg", target_fqdns="[if(equals(environment().name, 'AzureUSGovernment'), variables('entraFqdnsGov'), variables('entraFqdnsCom'))]"),
     app_rule("Allow-Linux-Repos", target_fqdns="[variables('linuxRepoFqdns')]", protocols=app_both(True, True)),
     app_rule("Allow-PKI-CRL-OCSP", target_fqdns="[variables('pkiFqdns')]", protocols=app_both(True, True)),
+    app_rule("Allow-Admin-Portal-EntraConnect", target_fqdns="[if(equals(environment().name, 'AzureUSGovernment'), variables('adminFqdnsGov'), variables('adminFqdnsCom'))]", protocols=app_both(True, True)),
 ]
 
 lab_group = {
