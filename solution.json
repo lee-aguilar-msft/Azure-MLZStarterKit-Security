@@ -900,6 +900,29 @@
               "[parameters('virtualNetworkAddressPrefix')]"
             ],
             "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Admin-Portal-EntraConnect",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('adminFqdnsGov'), variables('adminFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
           }
         ]
       }
@@ -1170,6 +1193,29 @@
               "[parameters('virtualNetworkAddressPrefix')]"
             ],
             "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Admin-Portal-EntraConnect",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('adminFqdnsGov'), variables('adminFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
           }
         ]
       }
@@ -1185,7 +1231,74 @@
     ],
     "securityLabDeploymentName": "[format('deploy-security-lab-{0}', parameters('deploymentNameSuffix'))]",
     "arcDeploymentName": "[format('deploy-arc-pls-{0}', parameters('deploymentNameSuffix'))]",
-    "labWorkspaceName": "[if(not(empty(parameters('customWorkspaceName'))), parameters('customWorkspaceName'), format('{0}-law-lab', parameters('prefix')))]"
+    "labWorkspaceName": "[if(not(empty(parameters('customWorkspaceName'))), parameters('customWorkspaceName'), format('{0}-law-lab', parameters('prefix')))]",
+    "adminFqdnsGov": [
+      "*.applicationinsights.us",
+      "*.azure.us",
+      "azure.us",
+      "*.azureedge.net",
+      "*.azureedge.us",
+      "*.loganalytics.us",
+      "*.microsoft.us",
+      "*.microsoftonline.us",
+      "*.msauth.net",
+      "*.msidentity.us",
+      "*.s-microsoft.com",
+      "*.usgovcloudapi.net",
+      "*.usgovtrafficmanager.net",
+      "*.windowsazure.us",
+      "graph.microsoftazure.us",
+      "main.ff.marketplacedataprovider.azure.us",
+      "*.msappproxy.us",
+      "login.windows.us",
+      "secure.aadcdn.microsoftonline-p.com",
+      "*.microsoftonline-p.us",
+      "*.msauthimages.net",
+      "*.msecnd.net",
+      "*.msftauth.net",
+      "*.msftauthimages.net",
+      "*.phonefactor.net",
+      "enterpriseregistration.windows.net",
+      "policykeyservice.dc.ad.msft.net",
+      "ocsp.msocsp.us",
+      "ctldl.windowsupdate.us",
+      "download.microsoft.com",
+      "*.download.microsoft.com",
+      "go.microsoft.com",
+      "aka.ms"
+    ],
+    "adminFqdnsCom": [
+      "login.microsoft.com",
+      "login.microsoftonline.com",
+      "login.live.com",
+      "*.aadcdn.msftauth.net",
+      "*.aadcdn.msftauthimages.net",
+      "*.aadcdn.msauthimages.net",
+      "*.logincdn.msftauth.net",
+      "*.msauth.net",
+      "*.aadcdn.microsoftonline-p.com",
+      "*.microsoftonline-p.com",
+      "*.portal.azure.com",
+      "portal.azure.com",
+      "*.hosting.portal.azure.net",
+      "*.hosting-ms.portal.azure.net",
+      "*.reactblade.portal.azure.net",
+      "management.azure.com",
+      "*.ext.azure.com",
+      "*.graph.windows.net",
+      "*.graph.microsoft.com",
+      "hosting.partners.azure.net",
+      "*.microsoftonline.com",
+      "*.msappproxy.net",
+      "*.servicebus.windows.net",
+      "*.msftauth.net",
+      "*.msecnd.net",
+      "download.microsoft.com",
+      "*.download.microsoft.com",
+      "go.microsoft.com",
+      "aka.ms",
+      "catalogartifact.azureedge.net"
+    ]
   },
   "resources": [
     {
