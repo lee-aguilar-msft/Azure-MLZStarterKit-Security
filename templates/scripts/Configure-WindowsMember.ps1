@@ -4,6 +4,7 @@ param (
   [Parameter(Mandatory = $true)] [string]$Role,            # Workstation | MemberServer | EntraConnectServer
   [string]$MdeOnboardingBlob = '',                          # raw onboarding JSON; empty = skip (servers may use MDE.Windows extension instead)
   [string]$HydrationScriptBase64 = '',
+  [string]$HybridJoinScriptBase64 = '',                     # Invoke-HybridJoinCycle.ps1, written to C:\LabTools on the Entra Connect server
   [string]$HydrationIntervalMinutes = '60',
   [string]$CloudSuffix = 'us',                              # 'us' = Azure Government / GCC High; 'com' = commercial
   [string]$EntraConnectDownloadUrl = ''                     # empty = do not pre-install (see the Entra Connect section below)
@@ -77,6 +78,13 @@ if ($Role -eq 'Workstation') {
   $mdmTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(20) -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration (New-TimeSpan -Days 7)
   Register-ScheduledTask -TaskName 'LAB-IntuneAutoEnroll-Retry' -Action $mdmAction -Trigger $mdmTrigger -User 'SYSTEM' -RunLevel Highest -Force | Out-Null
   Write-Output 'Hybrid-join and Intune auto-enroll retry tasks registered'
+  # Let C:\LabTools\Invoke-HybridJoinCycle.ps1 (on the Entra Connect server) trigger the join remotely.
+  # Windows 11 ships with WinRM off; enable it for the domain network profile only.
+  try {
+    Enable-PSRemoting -Force -SkipNetworkProfileCheck -ErrorAction Stop | Out-Null
+    Get-NetFirewallRule -Name 'WINRM-HTTP-In-TCP*' -ErrorAction SilentlyContinue | Set-NetFirewallRule -Profile Domain -ErrorAction SilentlyContinue
+    Write-Output 'WinRM enabled (domain profile)'
+  } catch { Write-Warning "Enable-PSRemoting: $($_.Exception.Message)" }
 }
 
 # --- Entra Connect staging on the designated member server -----------------------------------------
@@ -119,6 +127,10 @@ Use version 2.5.79.0 or later; older builds were retired on 30 September 2026.
 BEFORE enabling sync, create the cloud-only break-glass Global Admin and exclude it from Conditional Access.
 "@
     Set-Content -Path 'C:\LabTools\README-EntraConnect.txt' -Value $readme
+    if ($HybridJoinScriptBase64) {
+      [IO.File]::WriteAllBytes('C:\LabTools\Invoke-HybridJoinCycle.ps1', [Convert]::FromBase64String($HybridJoinScriptBase64))
+      Write-Output 'Invoke-HybridJoinCycle.ps1 staged in C:\LabTools'
+    }
     Write-Output 'Entra Connect: TLS 1.2 set and README-EntraConnect.txt written (install from the Entra admin center)'
   } catch { Write-Warning "Entra Connect staging: $($_.Exception.Message)" }
 }
