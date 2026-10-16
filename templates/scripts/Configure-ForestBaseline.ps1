@@ -193,6 +193,18 @@ if ($CreateIntuneGpo -ieq 'true') {
   $mdmKey = 'HKLM\SOFTWARE\Policies\Microsoft\Windows\CurrentVersion\MDM'
   Set-GPRegistryValue -Name $gpo.DisplayName -Key $mdmKey -ValueName 'AutoEnrollMDM' -Type DWord -Value 1 | Out-Null
   Set-GPRegistryValue -Name $gpo.DisplayName -Key $mdmKey -ValueName 'UseAADCredentialType' -Type DWord -Value ([int]$IntuneCredentialType) | Out-Null
+  # Set-GPRegistryValue only registers the Registry extension on the GPO. The client creates the
+  # "Schedule created by enrollment client for automatically enrolling in MDM" task only when the
+  # "MDM Policy" client-side extension (dmenrollengine.dll) runs, which the Group Policy editor registers
+  # for this ADMX setting. Without it the values reach the client but enrollment is never attempted.
+  $mdmObj = Get-ADObject -Identity "CN={$($gpo.Id)},CN=Policies,CN=System,$((Get-ADDomain).DistinguishedName)" -Properties gPCMachineExtensionNames, versionNumber
+  $mdmCse = '[{7909AD9E-09EE-4247-BAB9-7029D5F0A278}{D02B1F72-3407-48AE-BA88-E8213C6761F1}]'
+  if ([string]$mdmObj.gPCMachineExtensionNames -notlike '*7909AD9E-09EE-4247-BAB9-7029D5F0A278*') {
+    Set-ADObject -Identity $mdmObj.DistinguishedName -Replace @{ gPCMachineExtensionNames = ([string]$mdmObj.gPCMachineExtensionNames + $mdmCse) }
+    $mdmVer = [int]$mdmObj.versionNumber + 1
+    Set-ADObject -Identity $mdmObj.DistinguishedName -Replace @{ versionNumber = $mdmVer }
+    Set-Content -Path "\\$DomainName\SYSVOL\$DomainName\Policies\{$($gpo.Id)}\GPT.INI" -Value "[General]`r`nVersion=$mdmVer" -Encoding ASCII
+  }
   # GCC High / DoD note: the MDM enrollment URLs come from the tenant's "Microsoft Intune" mobility
   # (MDM) configuration, which must point at the .us endpoints (Prepare-Tenant.ps1 sets them).
   # $EnrollmentUrlSuffix is recorded for the verification script.
