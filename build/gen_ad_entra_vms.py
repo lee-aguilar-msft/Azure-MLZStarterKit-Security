@@ -36,6 +36,7 @@ configure_linux_sh = rd("configure-linux.sh")
 prep_linux_sh = rd("prep-linux.sh")
 hydrate_win_b64 = b64("Invoke-LabHydration.ps1")
 hydrate_linux_b64 = b64("hydrate-linux.sh")
+hybrid_join_b64 = b64("Invoke-HybridJoinCycle.ps1")
 
 tmpl = {
     "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
@@ -91,6 +92,7 @@ tmpl = {
         "prepLinuxScript": prep_linux_sh,
         "hydrateWinB64": hydrate_win_b64,
         "hydrateLinuxB64": hydrate_linux_b64,
+        "hybridJoinCycleB64": hybrid_join_b64,
         "vmAdminRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1c0163c0-47e6-4577-8991-ea5c82e286e4')]",
         "vmUserRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'fb879df8-f326-4884-b1cf-06f3ad86be52')]",
         "dnsServerList": "[union(createArray(parameters('domainControllerPrivateIp')), parameters('additionalDnsServers'))]",
@@ -272,6 +274,7 @@ R.append({
             {"name": "HydrationScriptBase64", "value": "[if(parameters('deployHydration'), variables('hydrateWinB64'), '')]"},
             {"name": "HydrationIntervalMinutes", "value": "[parameters('hydrationIntervalMinutes')]"},
             {"name": "CloudSuffix", "value": "[parameters('cloudSuffix')]"},
+            {"name": "HybridJoinScriptBase64", "value": "[if(equals(variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].role, 'EntraConnectServer'), variables('hybridJoinCycleB64'), '')]"},
         ],
         "protectedParameters": [{"name": "MdeOnboardingBlob", "value": "[if(variables('windowsVms')[range(1, variables('memberWinCount'))[copyIndex()]].isServer, '', parameters('mdeOnboardingBlob'))]"}],
     },
