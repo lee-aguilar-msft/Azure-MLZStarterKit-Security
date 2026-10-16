@@ -12,13 +12,13 @@
   </defs>
   <rect width="1400" height="620" fill="#FFFFFF"/>
   <text x="30" y="40" class="h">MLZ Security Lab Starter Kit — hub-and-spoke overview</text>
-  <text x="30" y="64" class="n">Mission Landing Zone hub + T0/T1/T2 spokes come from the upstream mlz.json module; the kit adds the Tier 3 security-lab spoke and the security layer.</text>
+  <text x="30" y="64" class="n">Mission Landing Zone hub + T1/T2 spokes come from the upstream mlz.json module; the kit adds the Tier 3 security-lab spoke and the security layer.</text>
 
   <!-- T0 -->
-  <rect x="40" y="110" width="400" height="140" rx="22" fill="#0A66B5" stroke="#0A4F8A" stroke-width="2"/>
+  <rect x="40" y="110" width="400" height="140" rx="22" fill="#9AA5B1" stroke="#7A858F" stroke-width="2" stroke-dasharray="8,5"/>
   <text x="240" y="165" class="t">T0: Identity and</text>
   <text x="240" y="200" class="t">Authorization</text>
-  <text x="240" y="232" class="s">MLZ identity VNet · deployed by mlz.json</text>
+  <text x="240" y="232" class="s">optional MLZ tier · not deployed (AD forest is in T3)</text>
 
   <!-- T1 -->
   <rect x="40" y="400" width="400" height="140" rx="22" fill="#0A66B5" stroke="#0A4F8A" stroke-width="2"/>
@@ -48,11 +48,11 @@
   <text x="700" y="378" class="s">Azure Firewall Premium · Bastion</text><text x="700" y="395" class="s">private DNS zones · NSG flow logs</text>
 
   <!-- arrows -->
-  <line x1="440" y1="200" x2="560" y2="282" stroke="#1F6FB2" stroke-width="2.5" marker-end="url(#a)"/>
+  <line x1="440" y1="200" x2="560" y2="282" stroke="#9AA5B1" stroke-width="2" stroke-dasharray="6,4"/>
   <line x1="440" y1="450" x2="560" y2="378" stroke="#1F6FB2" stroke-width="2.5" marker-end="url(#a)"/>
   <line x1="960" y1="200" x2="840" y2="282" stroke="#1F6FB2" stroke-width="2.5" marker-end="url(#a)"/>
   <line x1="960" y1="455" x2="840" y2="378" stroke="#1F6FB2" stroke-width="2.5" marker-end="url(#a)"/>
-  <text x="470" y="232" class="n" fill="#1F6FB2">vnet peer</text>
+  <text x="470" y="232" class="n" fill="#9AA5B1">(not deployed)</text>
   <text x="455" y="470" class="n" fill="#1F6FB2">vnet peer</text>
   <text x="850" y="232" class="n" fill="#1F6FB2">vnet peer</text>
   <text x="868" y="468" class="n" fill="#1F6FB2">vnet peer +</text><text x="868" y="486" class="n" fill="#1F6FB2">forced tunnel</text>

@@ -1,229 +1,181 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1000" viewBox="0 0 1600 1000" font-family="DejaVu Sans, Segoe UI, Arial, sans-serif">
-  <defs>
-    <marker id="arr" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,1 L9,5 L0,9 z" fill="#5B7A99"/>
-    </marker>
-    <marker id="arrg" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
-      <path d="M0,1 L9,5 L0,9 z" fill="#4E9A3C"/>
-    </marker>
-    <style>
-      .title{font-size:26px;font-weight:bold;fill:#1F3864}
-      .sub{font-size:14px;fill:#555}
-      .zone{font-size:19px;font-weight:bold;fill:#333}
-      .lbl{font-size:12px;fill:#222}
-      .small{font-size:10px;fill:#444}
-      .mono{font-family:DejaVu Sans Mono, Consolas, monospace;font-size:10.5px;fill:#1F3864}
-      .box{fill:#FFFFFF;stroke:#8FA8C2;stroke-width:1.2;rx:6}
-      .vm{fill:#E8F1FA;stroke:#2E75B6;stroke-width:1.2}
-      .lx{fill:#FFF4E0;stroke:#C77A00;stroke-width:1.2}
-      .sec{fill:#EAF4E4;stroke:#4E9A3C;stroke-width:1.2}
-      .legend{font-size:12px;fill:#333}
-    </style>
-  </defs>
-
-  <rect width="1600" height="1000" fill="#FAFBFD"/>
-  <text x="30" y="40" class="title">MLZ Security Lab Starter Kit — what the deployment creates (Azure Government, usgovvirginia)</text>
-  <text x="30" y="62" class="sub">Prefix sdl-dev-va-seclab · one subscription · everything below is created by solution.json + Post-Deploy.ps1; nothing is pre-existing except the tenant and the Entra security group</text>
-
-  <!-- ===== Security, Monitoring and Compliance band ===== -->
-  <rect x="30" y="80" width="1540" height="150" fill="#E9E9E9" stroke="#8A8A8A" stroke-width="1.5" stroke-dasharray="7,4" rx="4"/>
-  <text x="45" y="105" class="zone">Security, Monitoring and Compliance (subscription / tenant scope)</text>
-
-  <rect x="45" y="118" width="300" height="100" class="sec" rx="6"/>
-  <text x="58" y="138" class="lbl" font-weight="bold">Microsoft Defender for Cloud</text>
-  <text x="58" y="156" class="small">Plans on: CSPM, Servers P2, Storage, SQL (on VMs),</text>
-  <text x="58" y="171" class="small">Containers, Key Vault, Resource Manager, OSS DB, Cosmos</text>
-  <text x="58" y="186" class="small">Hidden in Gov: App Service, APIs · retired: DNS</text>
-  <text x="58" y="206" class="small">Defender for Servers auto-provisions MDE on the VMs</text>
-
-  <rect x="360" y="118" width="250" height="100" class="sec" rx="6"/>
-  <text x="373" y="138" class="lbl" font-weight="bold">Azure Policy (audit-only)</text>
-  <text x="373" y="156" class="small">Microsoft cloud security benchmark (MCSB)</text>
-  <text x="373" y="171" class="small">MLZ built-in policy set</text>
-  <text x="373" y="186" class="small">Optional: NIST 800-53 R5, NIST 800-171 R2</text>
-  <text x="373" y="206" class="small">assign-mcsb / assign-mlz at subscription scope</text>
-
-  <rect x="625" y="118" width="400" height="100" class="sec" rx="6"/>
-  <text x="638" y="138" class="lbl" font-weight="bold">Microsoft Sentinel on sdl-law-lab (tier-3 RG)</text>
-  <text x="638" y="156" class="small">Content Hub: Entra ID · Azure Activity · Defender XDR · Windows Security</text>
-  <text x="638" y="171" class="small">Events · Syslog · UEBA Essentials → 266 analytics rules enabled, UEBA on</text>
-  <text x="638" y="186" class="small">Connectors: Defender XDR (+MDE/MDI/MDCA/MDO/IDP), SecurityEvents</text>
-  <text x="638" y="201" class="small">via AMA, Syslog via AMA, Entra ID, Azure Activity</text>
-  <text x="638" y="214" class="small" fill="#1F3864">(solutions, rules, UEBA, connectors = Post-Deploy.ps1)</text>
-
-  <rect x="1040" y="118" width="250" height="100" class="sec" rx="6"/>
-  <text x="1053" y="138" class="lbl" font-weight="bold">Diagnostic settings</text>
-  <text x="1053" y="156" class="small">Entra ID → sdl-law-lab (tenant-level setting):</text>
-  <text x="1053" y="171" class="small">Audit, SignIn, NonInteractive, SP, MI, Prov., Risk</text>
-  <text x="1053" y="186" class="small">Activity log → sdl-law-lab (subscription)</text>
-  <text x="1053" y="206" class="small">NSG flow logs → NetworkWatcherRG (MLZ)</text>
-
-  <rect x="1305" y="118" width="250" height="100" class="sec" rx="6"/>
-  <text x="1318" y="138" class="lbl" font-weight="bold">Microsoft Entra ID (tenant)</text>
-  <text x="1318" y="156" class="small">Security group → VM Admin Login on all VMs</text>
-  <text x="1318" y="171" class="small">Entra SSH (Linux) · Entra RDP via Bastion (Win)</text>
-  <text x="1318" y="186" class="small">Manual: break-glass GA, CA exclusion for Intune</text>
-  <text x="1318" y="201" class="small">Enrollment, Entra Connect on ms01 (checklist)</text>
-
-  <!-- ===== Hub ===== -->
-  <rect x="30" y="250" width="330" height="700" fill="#F3F6FA" stroke="#2E75B6" stroke-width="2" stroke-dasharray="8,5" rx="4"/>
-  <text x="45" y="276" class="zone">MLZ Hub</text>
-  <text x="45" y="294" class="small">sdl-dev-va-hub-rg-network · hub VNet</text>
-
-  <rect x="50" y="310" width="290" height="70" class="box"/>
-  <text x="62" y="331" class="lbl" font-weight="bold">Azure Firewall (Premium)</text>
-  <text x="62" y="348" class="small">Rule collection groups: Intune, MDE, Arc, Entra,</text>
-  <text x="62" y="363" class="small">Linux repos (+ Azure RHUI), PKI, AzureCloud tag</text>
-
-  <rect x="50" y="395" width="290" height="55" class="box"/>
-  <text x="62" y="416" class="lbl" font-weight="bold">Azure Bastion</text>
-  <text x="62" y="433" class="small">RDP / SSH with Entra credentials, no public IPs on VMs</text>
-
-  <rect x="50" y="465" width="290" height="55" class="box"/>
-  <text x="62" y="486" class="lbl" font-weight="bold">Hub Log Analytics workspace</text>
-  <text x="62" y="503" class="small">MLZ operations logs, firewall and NSG flow logs</text>
-
-  <rect x="50" y="535" width="290" height="78" class="box"/>
-  <text x="62" y="556" class="lbl" font-weight="bold">Private DNS zones (Arc)</text>
-  <text x="62" y="573" class="mono">privatelink.his.arc.azure.us</text>
-  <text x="62" y="588" class="mono">privatelink.guestconfiguration.azure.us</text><text x="62" y="602" class="mono">privatelink.dp.kubernetesconfig….azure.us</text>
-
-  <rect x="50" y="620" width="290" height="55" class="box"/>
-  <text x="62" y="641" class="lbl" font-weight="bold">Network Watcher + NSG flow logs</text>
-  <text x="62" y="658" class="small">created in NetworkWatcherRG — removed by destroy.ps1</text>
-
-  <rect x="50" y="690" width="290" height="55" class="box"/>
-  <text x="62" y="711" class="lbl" font-weight="bold">Hub Key Vault + Disk Encryption Set</text>
-  <text x="62" y="728" class="small">Encryption-at-host for every lab VM</text>
-
-  <text x="62" y="775" class="small" font-style="italic">Hub → spoke: VNet peering, UDR 0.0.0.0/0 → firewall</text>
-  <text x="62" y="792" class="small" font-style="italic">(forced tunnelling for the tier-3 subnet)</text>
-
-  <!-- peering arrow -->
-  <line x1="360" y1="470" x2="395" y2="470" stroke="#5B7A99" stroke-width="2" marker-end="url(#arr)"/>
-  <line x1="395" y1="490" x2="360" y2="490" stroke="#5B7A99" stroke-width="2" marker-end="url(#arr)"/>
-  <text x="340" y="455" class="small">vnet peer</text>
-
-  <!-- ===== Tier 3 ===== -->
-  <rect x="395" y="250" width="1175" height="700" fill="#F3F6FA" stroke="#2E75B6" stroke-width="2" stroke-dasharray="8,5" rx="4"/>
-  <text x="410" y="276" class="zone">Tier 3 — Security Lab workload</text>
-  <text x="410" y="294" class="small">sdl-dev-va-seclab-rg-network · VNet 10.60.0.0/24 · subnet 10.60.0.0/25 with NSG · route table → firewall · 59 resources</text>
-
-  <!-- Identity row -->
-  <rect x="410" y="310" width="740" height="190" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
-  <text x="422" y="330" class="lbl" font-weight="bold">Active Directory forest corp.sleepingdragonslab.us (CORP)</text>
-
-  <rect x="422" y="345" width="150" height="70" class="vm" rx="5"/>
-  <text x="432" y="365" class="lbl" font-weight="bold">sdl-dc01</text>
-  <text x="432" y="381" class="small">Domain controller</text>
-  <text x="432" y="395" class="small">10.60.0.10 · WS2022</text>
-  <text x="432" y="409" class="small">forest + DNS + GPOs</text>
-
-  <rect x="585" y="345" width="130" height="70" class="vm" rx="5"/>
-  <text x="595" y="365" class="lbl" font-weight="bold">sdl-ms01</text>
-  <text x="595" y="381" class="small">Member server</text>
-  <text x="595" y="395" class="small">Entra Connect staged</text>
-  <text x="595" y="409" class="small">(C:\LabTools)</text>
-
-  <rect x="728" y="345" width="130" height="70" class="vm" rx="5"/>
-  <text x="738" y="365" class="lbl" font-weight="bold">sdl-ms02</text>
-  <text x="738" y="381" class="small">Member server</text>
-  <text x="738" y="395" class="small">WS2022 Gen2</text>
-
-  <rect x="871" y="345" width="265" height="70" class="vm" rx="5"/>
-  <text x="881" y="365" class="lbl" font-weight="bold">sdl-cl01 · sdl-cl02 · sdl-cl03</text>
-  <text x="881" y="381" class="small">Windows 11 24H2 clients, domain-joined</text>
-  <text x="881" y="395" class="small">hybrid join + Intune auto-enrol (post-deploy)</text>
-  <text x="881" y="409" class="small">MDE via Defender for Servers / GPO</text>
-
-  <text x="422" y="440" class="small">All Windows VMs: domain join, configure-member run-command, Azure Monitor Agent, auto-shutdown schedule,</text>
-  <text x="422" y="455" class="small">Virtual Machine Administrator Login for the Entra group, NICs created serially (DC keeps 10.60.0.10).</text>
-  <text x="422" y="478" class="small">Windows DCR sdl-dcr-windows-security → SecurityEvent table (Sentinel "Windows Security Events via AMA")</text>
-
-  <!-- Linux row -->
-  <rect x="410" y="515" width="740" height="120" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
-  <text x="422" y="535" class="lbl" font-weight="bold">Linux servers with Entra SSH login</text>
-  <rect x="422" y="548" width="225" height="52" class="lx" rx="5"/>
-  <text x="432" y="567" class="lbl" font-weight="bold">sdl-lx-rhel</text>
-  <text x="432" y="583" class="small">RHEL · Azure RHUI via firewall</text>
-  <rect x="660" y="548" width="225" height="52" class="lx" rx="5"/>
-  <text x="670" y="567" class="lbl" font-weight="bold">sdl-lx-ubuntu</text>
-  <text x="670" y="583" class="small">Ubuntu · apt (prep-linux waits for locks)</text>
-  <rect x="898" y="548" width="238" height="52" class="lx" rx="5"/>
-  <text x="908" y="567" class="lbl" font-weight="bold">sdl-lx-sles</text>
-  <text x="908" y="583" class="small">SLES · zypper</text>
-  <text x="422" y="622" class="small">prep-linux run-command → AADSSHLoginForLinux → Azure Monitor Agent · Linux DCR sdl-dcr-linux-syslog → Syslog table</text>
-
-  <!-- Monitoring / Arc / CSPM column -->
-  <rect x="1165" y="310" width="390" height="120" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
-  <text x="1177" y="330" class="lbl" font-weight="bold">Log Analytics + Sentinel</text>
-  <text x="1177" y="348" class="mono">sdl-law-lab</text>
-  <text x="1177" y="366" class="small">Sentinel onboarding state · SecurityInsights solution</text>
-  <text x="1177" y="381" class="small">DCE sdl-dce-sentinel · DCRs + associations to all 9 VMs</text>
-  <text x="1177" y="396" class="small">Content-script managed identity (Sentinel Contributor)</text>
-  <text x="1177" y="414" class="small">Hub LAW stays separate (MLZ ops); lab telemetry here</text>
-
-  <rect x="1165" y="445" width="390" height="95" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
-  <text x="1177" y="465" class="lbl" font-weight="bold">Azure Arc Private Link Scope</text>
-  <text x="1177" y="483" class="small">sdl-pls-arc + private endpoint sdl-pe-arc (NIC in the subnet)</text>
-  <text x="1177" y="498" class="small">linked to the three privatelink.*.azure.us zones in the hub</text>
-  <text x="1177" y="513" class="small">deployed after the VM module (avoids the DC IP race)</text>
-  <text x="1177" y="528" class="small">lets on-prem / other-cloud servers onboard to Arc privately</text>
-
-  <rect x="1165" y="555" width="390" height="80" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
-  <text x="1177" y="575" class="lbl" font-weight="bold">CSPM coverage samples (Defender findings to look at)</text>
-  <text x="1177" y="593" class="small">Key Vault kv-* · App Service plan asp-* + web app app-*</text>
-  <text x="1177" y="608" class="small">Container registry acr-* · optional SQL and APIM samples</text>
-  <text x="1177" y="623" class="small">names derived from a hash of the RG id + prefix</text>
-
-  <!-- Flow lines: VMs -> workspace -->
-  <line x1="1150" y1="400" x2="1165" y2="400" stroke="#4E9A3C" stroke-width="2" marker-end="url(#arrg)"/>
-  <line x1="1150" y1="575" x2="1165" y2="575" stroke="#4E9A3C" stroke-width="2"/>
-  <line x1="1157" y1="575" x2="1157" y2="420" stroke="#4E9A3C" stroke-width="2"/>
-  
-
-  <!-- Operations footer inside tier 3 -->
-  <rect x="410" y="655" width="1145" height="275" fill="#FFFFFF" stroke="#8FA8C2" stroke-width="1" rx="6"/>
-  <text x="422" y="677" class="lbl" font-weight="bold">How it is built and operated</text>
-
-  <rect x="422" y="690" width="360" height="225" fill="#F7F9FC" stroke="#C9D5E3" rx="5"/>
-  <text x="434" y="710" class="lbl" font-weight="bold">1 · Deploy to Azure Gov (portal form)</text>
-  <text x="434" y="730" class="small">solution.json (subscription scope) → nested deployments:</text>
-  <text x="434" y="747" class="mono">deploy-mlz-core · deploy-tier3</text>
-  <text x="434" y="763" class="mono">deploy-cspm-coverage · deploy-ad-entra-vms</text>
-  <text x="434" y="779" class="mono">deploy-security-lab · deploy-arc-pls</text>
-  <text x="434" y="799" class="small">+ Defender pricings, policy assignments, role assignments</text>
-  <text x="434" y="819" class="small">uiDefinition.json is cloud-aware: Gov regions hide plans</text>
-  <text x="434" y="834" class="small">and VM sizes Azure Government does not offer</text>
-  <text x="434" y="856" class="small">≈ 60–90 min · Owner on the subscription</text>
-  <text x="434" y="880" class="small">Repeatable: .github/workflows/rebuild-lab.yml (90-day OIDC)</text>
-
-  <rect x="797" y="690" width="370" height="225" fill="#F7F9FC" stroke="#C9D5E3" rx="5"/>
-  <text x="809" y="710" class="lbl" font-weight="bold">2 · Post-Deploy.ps1 (Cloud Shell, your sign-in)</text>
-  <text x="809" y="730" class="small">Enable-SentinelContent.ps1:</text>
-  <text x="809" y="747" class="small">• installs Content Hub solutions (packaged templates)</text>
-  <text x="809" y="763" class="small">• enables matching analytics rule templates (idempotent)</text>
-  <text x="809" y="779" class="small">• UEBA + EntityAnalytics settings</text>
-  <text x="809" y="795" class="small">• Defender XDR connector</text>
-  <text x="809" y="811" class="small">• Entra ID + Activity log diagnostic settings</text>
-  <text x="809" y="831" class="small">re-asserts Defender for Servers P2, prints the plans</text>
-  <text x="809" y="851" class="small">prints the break-glass / CA / Entra Connect checklist</text>
-  <text x="809" y="875" class="small">≈ 10 min · Global or Security Administrator</text>
-
-  <rect x="1182" y="690" width="360" height="225" fill="#F7F9FC" stroke="#C9D5E3" rx="5"/>
-  <text x="1194" y="710" class="lbl" font-weight="bold">3 · destroy.ps1 (teardown)</text>
-  <text x="1194" y="730" class="small">deletes every RG with the sdl-dev-va- prefix in parallel</text>
-  <text x="1194" y="747" class="small">force-deletes + purges the Log Analytics workspaces</text>
-  <text x="1194" y="763" class="small">purges Key Vaults (soft-delete)</text>
-  <text x="1194" y="779" class="small">removes policy assignments, resets Defender plans</text>
-  <text x="1194" y="795" class="small">deletes the NetworkWatcherRG flow logs</text>
-  <text x="1194" y="819" class="small">not removed: tenant Entra diagnostic setting,</text>
-  <text x="1194" y="834" class="small">the Entra security group, break-glass account</text>
-  <text x="1194" y="858" class="small">≈ 20–40 min · safe to re-run</text>
-
-  <!-- legend -->
-  <rect x="1310" y="960" width="14" height="14" class="vm"/><text x="1330" y="972" class="legend">Windows VM</text>
-  <rect x="1420" y="960" width="14" height="14" class="lx"/><text x="1440" y="972" class="legend">Linux VM</text>
-  <rect x="1505" y="960" width="14" height="14" class="sec"/><text x="1525" y="972" class="legend">Security</text>
-  <text x="30" y="975" class="small">Diagram: docs/img/00-architecture.png · source docs/architecture.svg</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1760" height="1180" viewBox="0 0 1760 1180" font-family="Segoe UI, DejaVu Sans, Arial, sans-serif">
+<defs>
+<marker id="ah" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#5B6B7C"/></marker>
+<marker id="ahs" markerWidth="9" markerHeight="9" refX="1" refY="4.5" orient="auto"><path d="M9,0 L0,4.5 L9,9 z" fill="#5B6B7C"/></marker>
+<marker id="ahg" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#57A64A"/></marker>
+<marker id="ahp" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="#7030A0"/></marker>
+<style>
+.tt{font-size:19px;fill:#333}.nt{font-size:12px;fill:#666}
+.ic{font-size:12px;fill:#222;text-anchor:middle}.ics{font-size:10.5px;fill:#666;text-anchor:middle}
+.icw{font-size:13px;fill:#fff;text-anchor:middle;font-weight:bold}
+.lb{font-size:12.5px;fill:#222;text-anchor:middle}.lbs{font-size:10.5px;fill:#555;text-anchor:middle}.lbL{font-size:12.5px;fill:#222}.lbsL{font-size:10.5px;fill:#555}
+.vn{font-size:13px;fill:#1F5FA8}.pl{font-size:12px;fill:#444;text-anchor:middle}
+.ttl{font-size:24px;font-weight:bold;fill:#1F3864}.st{font-size:13px;fill:#555}
+.mp{font-size:11.5px;fill:#7030A0;text-anchor:middle}
+</style></defs>
+<rect width="1760" height="1180" fill="#FFFFFF"/>
+<text x="24" y="34" class="ttl">MLZ Security Lab Starter Kit — deployed architecture (Azure Government)</text>
+<text x="24" y="56" class="st">Mission Landing Zone hub + T1/T2 (upstream mlz.json) · Tier 3 security lab + security layer (this kit) · tenant services wired by Post-Deploy.ps1 / Prepare-Tenant.ps1</text>
+<rect x="200" y="70" width="1300" height="124" fill="#E4E4E4" stroke="#8A8A8A" stroke-width="1.5" stroke-dasharray="7,4"/>
+<text x="214" y="96" class="tt">Security, Monitoring, and Compliance</text>
+<g transform="translate(330,132) scale(1.05)"><path d="M0,-22 L18,-14 L18,2 C18,14 9,22 0,26 C-9,22 -18,14 -18,2 L-18,-14 Z" fill="#2E8BD8"/><path d="M0,-14 L10,-9 L10,1 C10,9 5,14 0,17 Z" fill="#ffffff" opacity=".55"/></g>
+<text x="330" y="164" class="lb">Microsoft Defender for Cloud</text><text x="330" y="176" class="lbs">CSPM + Servers P2, Storage, SQL,</text><text x="330" y="187" class="lbs">Containers, Key Vault, ARM</text>
+<polygon points="560,112 577,122 577,142 560,152 543,142 543,122" fill="none" stroke="#6B7785" stroke-width="3"/><circle cx="560" cy="132" r="6" fill="#2E8BD8"/><circle cx="570" cy="126" r="3" fill="#2E8BD8"/><circle cx="570" cy="138" r="3" fill="#2E8BD8"/>
+<text x="560" y="164" class="lb">Azure Policy (audit)</text><text x="560" y="176" class="lbs">MCSB + MLZ initiative</text><text x="560" y="187" class="lbs"></text>
+<g transform="translate(780,130) scale(1.0)"><path d="M0,-24 L20,-14 L20,4 C20,16 10,24 0,28 C-10,24 -20,16 -20,4 L-20,-14 Z" fill="#1F75CB"/><circle cx="0" cy="2" r="9" fill="#fff"/><circle cx="0" cy="2" r="4" fill="#1F75CB"/></g>
+<text x="780" y="164" class="lb">Microsoft Sentinel</text><text x="780" y="176" class="lbs">6 Content Hub solutions</text><text x="780" y="187" class="lbs">266 analytics rules · UEBA</text>
+<path d="M992,132 l10,-10 M992,132 l10,10 M1028,132 l-10,-10 M1028,132 l-10,10" stroke="#2E8BD8" stroke-width="3" fill="none"/><ellipse cx="1006" cy="132" rx="7" ry="4" fill="none" stroke="#1F5FA8" stroke-width="2.5"/><ellipse cx="1014" cy="132" rx="7" ry="4" fill="none" stroke="#1F5FA8" stroke-width="2.5"/><line x1="1010" y1="106" x2="1010" y2="122" stroke="#2E8BD8" stroke-width="2.5"/><circle cx="1010" cy="104" r="4" fill="#2E8BD8"/>
+<text x="1010" y="164" class="lb">Private Link Scope</text><text x="1010" y="176" class="lbs">Azure Arc PLS +</text><text x="1010" y="187" class="lbs">private endpoint</text>
+<rect x="1201" y="114" width="28" height="36" rx="3" fill="#57A64A"/><path d="M1206,132 l5,0 l3,-7 l4,13 l3,-6 l5,0" stroke="#fff" stroke-width="2" fill="none"/>
+<text x="1215" y="164" class="lb">Diagnostic settings</text><text x="1215" y="176" class="lbs">Entra ID + Activity log</text><text x="1215" y="187" class="lbs">→ sentinel workspace</text>
+<circle cx="1420" cy="120" r="11" fill="#F2B705"/><circle cx="1420" cy="120" r="4" fill="#fff"/><rect x="1417" y="130" width="6" height="22" fill="#F2B705"/><rect x="1423" y="140" width="6" height="4" fill="#F2B705"/><rect x="1423" y="147" width="6" height="4" fill="#F2B705"/>
+<text x="1420" y="164" class="lb">Policy / RBAC</text><text x="1420" y="176" class="lbs">VM Admin Login role</text><text x="1420" y="187" class="lbs">(Entra group)</text>
+<rect x="24" y="560" width="140" height="150" fill="#fff" stroke="#9AA5B1" stroke-dasharray="4,3"/>
+<circle cx="94" cy="610" r="24" fill="#2E8BD8"/><path d="M76,618 a20,20 0 0 1 36,-14 a12,12 0 0 0 -18,10 a10,10 0 0 0 16,8" fill="#3BB9A4"/>
+<text x="94" y="655" class="lb">Browser</text><text x="94" y="671" class="lbs">portal.azure.us</text><text x="94" y="684" class="lbs">Cloud Shell</text>
+<path d="M94,560 L94,330 L268,330" stroke="#57A64A" stroke-width="1.8" stroke-dasharray="6,5" fill="none" marker-end="url(#ahg)"/>
+<text x="110" y="440" class="lbsL">Azure Portal /</text><text x="110" y="453" class="lbsL">Bastion</text>
+<rect x="200" y="205" width="230" height="940" fill="#EEF2F6" stroke="#2E75B6" stroke-width="2" stroke-dasharray="7,5" rx="3"/>
+<text x="212" y="231" class="tt">Hub</text>
+<text x="212" y="249" class="nt">lab-dev-va-hub-rg-network</text>
+<circle cx="315" cy="300" r="24" fill="#1F5FA8"/><path d="M305,292 l8,8 l-8,8 M325,292 l-8,8 l8,8" stroke="#fff" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+<text x="315" y="343" class="lb">Azure Bastion</text><text x="315" y="357" class="lbs">Entra SSH (Linux) · RDP (Windows)</text>
+<g transform="translate(315,470)"><path d="M-30,6 C-34,-10 -18,-22 -6,-14 C-2,-30 24,-30 26,-10 C38,-10 40,6 30,8 Z" fill="#2E8BD8"/><rect x="-16" y="-4" width="32" height="22" fill="#C0392B"/><line x1="-16" y1="3" x2="16" y2="3" stroke="#fff" stroke-width="1.5"/><line x1="-16" y1="10" x2="16" y2="10" stroke="#fff" stroke-width="1.5"/><line x1="-6" y1="-4" x2="-6" y2="3" stroke="#fff" stroke-width="1.5"/><line x1="6" y1="3" x2="6" y2="10" stroke="#fff" stroke-width="1.5"/><line x1="-6" y1="10" x2="-6" y2="18" stroke="#fff" stroke-width="1.5"/></g>
+<text x="315" y="510" class="lb">Azure Firewall Premium</text><text x="315" y="524" class="lbs">lab rules: Intune, MDE, Arc, Entra,</text><text x="315" y="537" class="lbs">Linux repos (RHUI), PKI, AzureCloud</text>
+<circle cx="255" cy="620" r="22" fill="#2E8BD8"/><text x="255" y="626" class="icw">DNS</text>
+<text x="255" y="660" class="lb">Private DNS</text><text x="255" y="673" class="lbs">Arc private zones</text>
+<circle cx="375" cy="620" r="16" fill="#ffffff" stroke="#2E8BD8" stroke-width="2.5"/><ellipse cx="375" cy="620" rx="7.2" ry="16" fill="none" stroke="#2E8BD8" stroke-width="1.8"/><line x1="359" y1="620" x2="391" y2="620" stroke="#2E8BD8" stroke-width="1.8"/><path d="M353,636 l8,-8 l4,4 l8,-10" stroke="#2DBE60" stroke-width="2.5" fill="none"/>
+<text x="375" y="660" class="lb">Network Watcher</text><text x="375" y="673" class="lbs">NSG flow logs</text>
+<circle cx="255" cy="742" r="11" fill="#F2B705"/><circle cx="255" cy="742" r="4" fill="#fff"/><rect x="252" y="752" width="6" height="22" fill="#F2B705"/><rect x="258" y="762" width="6" height="4" fill="#F2B705"/><rect x="258" y="769" width="6" height="4" fill="#F2B705"/>
+<text x="255" y="795" class="lb">Key Vault</text><text x="255" y="808" class="lbs">(private link)</text>
+<ellipse cx="375" cy="747" rx="16" ry="6" fill="#2E8BD8"/><rect x="359" y="747" width="32" height="14" fill="#2E8BD8"/><ellipse cx="375" cy="761" rx="16" ry="6" fill="#1F5FA8"/>
+<circle cx="389" cy="751" r="11" fill="#F2B705"/><circle cx="389" cy="751" r="4" fill="#fff"/><rect x="386" y="761" width="6" height="22" fill="#F2B705"/><rect x="392" y="771" width="6" height="4" fill="#F2B705"/><rect x="392" y="778" width="6" height="4" fill="#F2B705"/>
+<text x="375" y="795" class="lb">Disk Encryption</text><text x="375" y="808" class="lbs">Set (at host)</text>
+<rect x="249" y="888" width="10" height="16" fill="#2E8BD8"/><rect x="261" y="880" width="10" height="24" fill="#2E8BD8"/><rect x="273" y="872" width="10" height="32" fill="#1F5FA8"/>
+<text x="265" y="925" class="lb">Log Analytics</text><text x="265" y="938" class="lbs">MLZ operations logs</text>
+<rect x="356" y="872" width="28" height="36" rx="3" fill="#2E8BD8"/><rect x="361" y="880" width="18" height="5" fill="#fff"/>
+<text x="370" y="925" class="lb">Activity Logs</text>
+<text x="255" y="1130" class="vn">&lt;··&gt;  Virtual Network</text>
+<text x="315" y="1010" class="lbs">Hub VNet peers with every tier;</text><text x="315" y="1023" class="lbs">UDR 0.0.0.0/0 → firewall</text><text x="315" y="1036" class="lbs">(forced tunnelling)</text>
+<rect x="520" y="205" width="980" height="80" fill="#F7F7F7" stroke="#9AA5B1" stroke-width="2" stroke-dasharray="7,5" rx="3"/>
+<text x="532" y="231" class="tt" fill="#8A939C">Tier 0 (Identity)</text>
+<text x="532" y="249" class="nt">not deployed — optional MLZ tier; the lab AD forest lives in Tier 3</text>
+<line x1="430" y1="245" x2="520" y2="245" stroke="#B0B8C0" stroke-width="1.6" stroke-dasharray="5,4" marker-end="url(#ah)" marker-start="url(#ahs)"/>
+<text x="475.0" y="240.0" class="pl">vnet peer (n/a)</text>
+<rect x="520" y="300" width="980" height="150" fill="#EEF2F6" stroke="#2E75B6" stroke-width="2" stroke-dasharray="7,5" rx="3"/>
+<text x="532" y="326" class="tt">Tier 1 (Operations)</text>
+<text x="532" y="344" class="nt">lab-dev-va-operations-rg-network</text>
+<rect x="538" y="352" width="230" height="84" rx="4" fill="#F4F6F8" stroke="#C9D1D9"/>
+<g transform="translate(564,382) scale(0.9)"><path d="M0,-22 L18,-14 L18,2 C18,14 9,22 0,26 C-9,22 -18,14 -18,2 L-18,-14 Z" fill="#2E8BD8"/><path d="M0,-14 L10,-9 L10,1 C10,9 5,14 0,17 Z" fill="#ffffff" opacity=".55"/></g>
+<text x="588" y="378" class="lbL">Subnet with NSG rules</text>
+<rect x="570" y="391" width="40" height="26" rx="2" fill="#C5CCD3"/><rect x="573" y="394" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="586" y="417" width="8" height="6" fill="#C5CCD3"/><rect x="578" y="423" width="24" height="3" fill="#C5CCD3"/>
+<rect x="625" y="391" width="40" height="26" rx="2" fill="#C5CCD3"/><rect x="628" y="394" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="641" y="417" width="8" height="6" fill="#C5CCD3"/><rect x="633" y="423" width="24" height="3" fill="#C5CCD3"/>
+<rect x="680" y="391" width="40" height="26" rx="2" fill="#C5CCD3"/><rect x="683" y="394" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="696" y="417" width="8" height="6" fill="#C5CCD3"/><rect x="688" y="423" width="24" height="3" fill="#C5CCD3"/>
+<circle cx="854" cy="354" r="8" fill="#2E8BD8"/><path d="M842,376 q12,-16 24,0 z" fill="#2E8BD8"/><path d="M836,348 v10 h8" stroke="#1F5FA8" stroke-width="3" fill="none"/>
+<text x="850" y="392" class="lb">Route Table</text>
+<circle cx="850" cy="418" r="12" fill="#ffffff" stroke="#2E8BD8" stroke-width="2.5"/><ellipse cx="850" cy="418" rx="5.4" ry="12" fill="none" stroke="#2E8BD8" stroke-width="1.8"/><line x1="838" y1="418" x2="862" y2="418" stroke="#2E8BD8" stroke-width="1.8"/><path d="M832,430 l8,-8 l4,4 l8,-10" stroke="#2DBE60" stroke-width="2.5" fill="none"/>
+<rect x="974" y="368" width="10" height="16" fill="#2E8BD8"/><rect x="986" y="360" width="10" height="24" fill="#2E8BD8"/><rect x="998" y="352" width="10" height="32" fill="#1F5FA8"/>
+<text x="990" y="402" class="lb">Log Analytics</text><text x="990" y="415" class="lbs">w/ private link</text>
+<rect x="1106" y="354" width="28" height="36" rx="3" fill="#2E8BD8"/><rect x="1111" y="362" width="18" height="5" fill="#fff"/>
+<text x="1120" y="408" class="lb">Activity Logs</text>
+<rect x="1238" y="356" width="44" height="10" fill="#3BB9A4"/><rect x="1238" y="368" width="44" height="8" fill="#9BA3AB"/><rect x="1238" y="378" width="44" height="8" fill="#3BB9A4"/><rect x="1238" y="388" width="44" height="6" fill="#9BA3AB"/>
+<text x="1260" y="408" class="lb">Storage account</text><text x="1260" y="421" class="lbs">w/ private link</text>
+<text x="1350" y="442" class="vn">&lt;··&gt;  Virtual Network</text>
+<line x1="430" y1="375" x2="520" y2="375" stroke="#5B6B7C" stroke-width="1.6" stroke-dasharray="5,4" marker-end="url(#ah)" marker-start="url(#ahs)"/>
+<text x="475.0" y="370.0" class="pl">vnet peer</text>
+<rect x="520" y="465" width="980" height="140" fill="#EEF2F6" stroke="#2E75B6" stroke-width="2" stroke-dasharray="7,5" rx="3"/>
+<text x="532" y="491" class="tt">Tier 2 (Shared Services)</text>
+<text x="532" y="509" class="nt">lab-dev-va-sharedServices-rg-network</text>
+<rect x="538" y="515" width="230" height="80" rx="4" fill="#F4F6F8" stroke="#C9D1D9"/>
+<g transform="translate(564,545) scale(0.9)"><path d="M0,-22 L18,-14 L18,2 C18,14 9,22 0,26 C-9,22 -18,14 -18,2 L-18,-14 Z" fill="#2E8BD8"/><path d="M0,-14 L10,-9 L10,1 C10,9 5,14 0,17 Z" fill="#ffffff" opacity=".55"/></g>
+<text x="588" y="541" class="lbL">Subnet with NSG rules</text>
+<rect x="570" y="552" width="40" height="26" rx="2" fill="#C5CCD3"/><rect x="573" y="555" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="586" y="578" width="8" height="6" fill="#C5CCD3"/><rect x="578" y="584" width="24" height="3" fill="#C5CCD3"/>
+<rect x="625" y="552" width="40" height="26" rx="2" fill="#C5CCD3"/><rect x="628" y="555" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="641" y="578" width="8" height="6" fill="#C5CCD3"/><rect x="633" y="584" width="24" height="3" fill="#C5CCD3"/>
+<rect x="680" y="552" width="40" height="26" rx="2" fill="#C5CCD3"/><rect x="683" y="555" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="696" y="578" width="8" height="6" fill="#C5CCD3"/><rect x="688" y="584" width="24" height="3" fill="#C5CCD3"/>
+<circle cx="854" cy="517" r="8" fill="#2E8BD8"/><path d="M842,539 q12,-16 24,0 z" fill="#2E8BD8"/><path d="M836,511 v10 h8" stroke="#1F5FA8" stroke-width="3" fill="none"/>
+<text x="850" y="555" class="lb">Route Table</text>
+<circle cx="850" cy="580" r="12" fill="#ffffff" stroke="#2E8BD8" stroke-width="2.5"/><ellipse cx="850" cy="580" rx="5.4" ry="12" fill="none" stroke="#2E8BD8" stroke-width="1.8"/><line x1="838" y1="580" x2="862" y2="580" stroke="#2E8BD8" stroke-width="1.8"/><path d="M832,592 l8,-8 l4,4 l8,-10" stroke="#2DBE60" stroke-width="2.5" fill="none"/>
+<rect x="1106" y="514" width="28" height="36" rx="3" fill="#2E8BD8"/><rect x="1111" y="522" width="18" height="5" fill="#fff"/>
+<text x="1120" y="568" class="lb">Activity Logs</text>
+<rect x="1238" y="516" width="44" height="10" fill="#3BB9A4"/><rect x="1238" y="528" width="44" height="8" fill="#9BA3AB"/><rect x="1238" y="538" width="44" height="8" fill="#3BB9A4"/><rect x="1238" y="548" width="44" height="6" fill="#9BA3AB"/>
+<text x="1260" y="568" class="lb">Storage account</text><text x="1260" y="581" class="lbs">w/ private link</text>
+<text x="1350" y="597" class="vn">&lt;··&gt;  Virtual Network</text>
+<line x1="430" y1="535" x2="520" y2="535" stroke="#5B6B7C" stroke-width="1.6" stroke-dasharray="5,4" marker-end="url(#ah)" marker-start="url(#ahs)"/>
+<text x="475.0" y="530.0" class="pl">vnet peer</text>
+<rect x="520" y="620" width="980" height="525" fill="#FFF8EC" stroke="#C77A00" stroke-width="2.5" stroke-dasharray="7,5" rx="3"/>
+<text x="532" y="646" class="tt">Tier 3 (Security Lab) — added by this kit</text>
+<text x="532" y="664" class="nt">lab-dev-va-seclab-rg-network · VNet 10.60.0.0/24 · subnet 10.60.0.0/25 with NSG · route table → firewall</text>
+<line x1="430" y1="800" x2="520" y2="800" stroke="#5B6B7C" stroke-width="1.6" stroke-dasharray="5,4" marker-end="url(#ah)" marker-start="url(#ahs)"/>
+<text x="475.0" y="795.0" class="pl">vnet peer</text>
+<rect x="538" y="680" width="620" height="330" rx="4" fill="#F4F6F8" stroke="#C9D1D9"/>
+<g transform="translate(564,710) scale(0.9)"><path d="M0,-22 L18,-14 L18,2 C18,14 9,22 0,26 C-9,22 -18,14 -18,2 L-18,-14 Z" fill="#2E8BD8"/><path d="M0,-14 L10,-9 L10,1 C10,9 5,14 0,17 Z" fill="#ffffff" opacity=".55"/></g>
+<text x="588" y="706" class="lbL">Subnet with NSG rules — AD forest corp.contoso.lab</text>
+<rect x="588" y="756" width="40" height="26" rx="2" fill="#1F5FA8"/><rect x="591" y="759" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="604" y="782" width="8" height="6" fill="#1F5FA8"/><rect x="596" y="788" width="24" height="3" fill="#1F5FA8"/>
+<text x="608" y="806" class="ic">lab-dc01</text>
+<text x="608" y="819" class="ics">Domain controller · DNS</text>
+<rect x="718" y="756" width="40" height="26" rx="2" fill="#2E8BD8"/><rect x="721" y="759" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="734" y="782" width="8" height="6" fill="#2E8BD8"/><rect x="726" y="788" width="24" height="3" fill="#2E8BD8"/>
+<text x="738" y="806" class="ic">lab-ms01</text>
+<text x="738" y="819" class="ics">Entra Connect</text>
+<rect x="838" y="756" width="40" height="26" rx="2" fill="#2E8BD8"/><rect x="841" y="759" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="854" y="782" width="8" height="6" fill="#2E8BD8"/><rect x="846" y="788" width="24" height="3" fill="#2E8BD8"/>
+<text x="858" y="806" class="ic">lab-ms02</text>
+<text x="858" y="819" class="ics">Member server</text>
+<rect x="958" y="756" width="40" height="26" rx="2" fill="#5BA2E0"/><rect x="961" y="759" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="974" y="782" width="8" height="6" fill="#5BA2E0"/><rect x="966" y="788" width="24" height="3" fill="#5BA2E0"/>
+<text x="978" y="806" class="ic">lab-cl01..03</text>
+<text x="978" y="819" class="ics">Windows 11 clients</text>
+<text x="1016" y="758" class="lbs">×3</text>
+<rect x="628" y="881" width="40" height="26" rx="2" fill="#C77A00"/><rect x="631" y="884" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="644" y="907" width="8" height="6" fill="#C77A00"/><rect x="636" y="913" width="24" height="3" fill="#C77A00"/>
+<text x="648" y="931" class="ic">lab-rhel01</text>
+<text x="648" y="944" class="ics">Entra SSH + AMA</text>
+<circle cx="663" cy="883" r="7" fill="#222"/><circle cx="663" cy="885" r="4" fill="#fff"/>
+<rect x="788" y="881" width="40" height="26" rx="2" fill="#C77A00"/><rect x="791" y="884" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="804" y="907" width="8" height="6" fill="#C77A00"/><rect x="796" y="913" width="24" height="3" fill="#C77A00"/>
+<text x="808" y="931" class="ic">lab-ubu01</text>
+<text x="808" y="944" class="ics">Entra SSH + AMA</text>
+<circle cx="823" cy="883" r="7" fill="#222"/><circle cx="823" cy="885" r="4" fill="#fff"/>
+<rect x="948" y="881" width="40" height="26" rx="2" fill="#C77A00"/><rect x="951" y="884" width="34" height="18" fill="#ffffff" opacity=".35"/><rect x="964" y="907" width="8" height="6" fill="#C77A00"/><rect x="956" y="913" width="24" height="3" fill="#C77A00"/>
+<text x="968" y="931" class="ic">lab-sles01</text>
+<text x="968" y="944" class="ics">Entra SSH + AMA</text>
+<circle cx="983" cy="883" r="7" fill="#222"/><circle cx="983" cy="885" r="4" fill="#fff"/>
+<text x="848" y="985" class="lbs">GPOs: Intune auto-enroll · audit/logging · MDE (optional) · hybrid-join SCP in AD</text>
+<text x="848" y="999" class="lbs">Azure Monitor Agent on every VM → DCRs → sentinel workspace</text>
+<g transform="translate(1240,710) scale(0.85)"><path d="M0,-24 L20,-14 L20,4 C20,16 10,24 0,28 C-10,24 -20,16 -20,4 L-20,-14 Z" fill="#1F75CB"/><circle cx="0" cy="2" r="9" fill="#fff"/><circle cx="0" cy="2" r="4" fill="#1F75CB"/></g>
+<rect x="1279" y="712" width="10" height="16" fill="#2E8BD8"/><rect x="1291" y="704" width="10" height="24" fill="#2E8BD8"/><rect x="1303" y="696" width="10" height="32" fill="#1F5FA8"/>
+<text x="1360" y="704" class="lbL">lab-law-lab</text><text x="1360" y="718" class="lbsL">Sentinel workspace</text><text x="1360" y="731" class="lbsL">DCE + Windows/Linux DCRs</text>
+<path d="M1232,808 l10,-10 M1232,808 l10,10 M1268,808 l-10,-10 M1268,808 l-10,10" stroke="#2E8BD8" stroke-width="3" fill="none"/><ellipse cx="1246" cy="808" rx="7" ry="4" fill="none" stroke="#1F5FA8" stroke-width="2.5"/><ellipse cx="1254" cy="808" rx="7" ry="4" fill="none" stroke="#1F5FA8" stroke-width="2.5"/><line x1="1250" y1="782" x2="1250" y2="798" stroke="#2E8BD8" stroke-width="2.5"/><circle cx="1250" cy="780" r="4" fill="#2E8BD8"/>
+<text x="1360" y="798" class="lbL">Arc Private Link Scope</text><text x="1360" y="812" class="lbsL">+ private endpoint</text>
+<circle cx="1240" cy="868" r="11" fill="#F2B705"/><circle cx="1240" cy="868" r="4" fill="#fff"/><rect x="1237" y="878" width="6" height="22" fill="#F2B705"/><rect x="1243" y="888" width="6" height="4" fill="#F2B705"/><rect x="1243" y="895" width="6" height="4" fill="#F2B705"/>
+<circle cx="1290" cy="880" r="16" fill="#2E8BD8"/><circle cx="1290" cy="880" r="6" fill="#fff"/>
+<rect x="1319" y="866" width="32" height="26" rx="3" fill="#2E8BD8"/><rect x="1324" y="871" width="9" height="8" fill="#fff"/><rect x="1337" y="871" width="9" height="8" fill="#fff"/><rect x="1324" y="882" width="9" height="6" fill="#fff"/>
+<text x="1360" y="870" class="lbL">CSPM samples</text><text x="1360" y="884" class="lbsL">Key Vault · App Service · ACR</text>
+<circle cx="1244" cy="942" r="8" fill="#2E8BD8"/><path d="M1232,964 q12,-16 24,0 z" fill="#2E8BD8"/><path d="M1226,936 v10 h8" stroke="#1F5FA8" stroke-width="3" fill="none"/>
+<text x="1360" y="945" class="lbL">Route Table</text><text x="1360" y="959" class="lbsL">0.0.0.0/0 → firewall</text>
+<line x1="1158" y1="780" x2="1220" y2="720" stroke="#57A64A" stroke-width="1.6" stroke-dasharray="4,3" marker-end="url(#ah)"/>
+<text x="1188" y="742" class="pl">AMA</text>
+<rect x="538" y="1030" width="944" height="88" rx="4" fill="#ffffff" stroke="#E3C38F"/>
+<text x="550" y="1050" class="lbL" font-weight="bold">Build order (fails loudly)</text>
+<text x="550" y="1068" class="lbsL">promote DC → join members (wait for DC) → forest baseline: OUs, computers, GPOs, hybrid-join SCP → configure members → verify-forest</text>
+<text x="550" y="1088" class="lbL" font-weight="bold">Manual steps</text>
+<text x="550" y="1106" class="lbsL">Entra Connect wizard on lab-ms01 (your MFA) · lab user registers MFA and signs in once — then hybrid join, Intune enrollment and MDE onboarding follow</text>
+<text x="1350" y="1138" class="vn">&lt;··&gt;  Virtual Network</text>
+<path d="M345,470 C470,470 470,395 560,395" stroke="#57A64A" stroke-width="1.8" stroke-dasharray="6,5" fill="none" marker-end="url(#ahg)"/>
+<path d="M345,470 C470,470 470,560 560,560" stroke="#57A64A" stroke-width="1.8" stroke-dasharray="6,5" fill="none" marker-end="url(#ahg)"/>
+<path d="M345,470 C470,470 470,775 560,775" stroke="#57A64A" stroke-width="1.8" stroke-dasharray="6,5" fill="none" marker-end="url(#ahg)"/>
+<text x="460" y="462" class="pl">Forced tunnelling</text>
+<rect x="1525" y="205" width="215" height="940" fill="#F6F0FB" stroke="#7030A0" stroke-width="2" stroke-dasharray="7,5" rx="3"/>
+<text x="1537" y="231" class="tt">Microsoft cloud</text><text x="1537" y="249" class="nt">tenant services (GCC High)</text>
+<text x="1632" y="290" class="lbs">Prepare-Tenant.ps1 (Graph):</text><text x="1632" y="303" class="lbs">MDM URLs + scope, Intune</text><text x="1632" y="316" class="lbs">Enrollment SP, CA check,</text><text x="1632" y="329" class="lbs">licenses, MDE connector</text><text x="1632" y="342" class="lbs">+ EDR policy</text>
+<text x="1632" y="400" class="lbs">Post-Deploy.ps1:</text><text x="1632" y="413" class="lbs">Sentinel content, rules,</text><text x="1632" y="426" class="lbs">UEBA, XDR connector,</text><text x="1632" y="439" class="lbs">Entra/Activity log routing</text>
+<polygon points="1632,750 1652,784 1612,784" fill="#2E8BD8"/><polygon points="1632,762 1642,780 1622,780" fill="#9CD1FF"/>
+<text x="1632" y="806" class="lb">Microsoft Entra ID</text><text x="1632" y="819" class="lbs">synced users · hybrid-joined</text><text x="1632" y="831" class="lbs">devices · Entra SSH login</text>
+<rect x="1612" y="852" width="40" height="28" rx="3" fill="#2E8BD8"/><rect x="1626" y="860" width="22" height="26" rx="3" fill="#1F5FA8" stroke="#fff" stroke-width="2"/>
+<text x="1632" y="900" class="lb">Microsoft Intune</text><text x="1632" y="913" class="lbs">MDM scope + .us URLs</text><text x="1632" y="925" class="lbs">auto-enroll · EDR policy</text>
+<g transform="translate(1632,1000) scale(0.95)"><path d="M0,-22 L18,-14 L18,2 C18,14 9,22 0,26 C-9,22 -18,14 -18,2 L-18,-14 Z" fill="#5B5FC7"/><path d="M0,-14 L10,-9 L10,1 C10,9 5,14 0,17 Z" fill="#ffffff" opacity=".55"/></g>
+<text x="1632" y="1040" class="lb">Defender XDR / MDE</text><text x="1632" y="1053" class="lbs">Intune connection ·</text><text x="1632" y="1065" class="lbs">auto from connector</text>
+<g transform="translate(1632,1100) scale(0.7)"><path d="M0,-24 L20,-14 L20,4 C20,16 10,24 0,28 C-10,24 -20,16 -20,4 L-20,-14 Z" fill="#1F75CB"/><circle cx="0" cy="2" r="9" fill="#fff"/><circle cx="0" cy="2" r="4" fill="#1F75CB"/></g>
+<text x="1632" y="1132" class="lbs">XDR incidents → Sentinel</text>
+<line x1="1500" y1="768" x2="1585" y2="768" stroke="#7030A0" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#ahp)"/>
+<text x="1492" y="762" class="mp" text-anchor="end" style="text-anchor:end">lab-ms01: Entra Connect sync (users + devices)</text>
+<line x1="1500" y1="848" x2="1585" y2="848" stroke="#7030A0" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#ahp)"/>
+<text x="1492" y="842" class="mp" text-anchor="end" style="text-anchor:end">clients: hybrid join + Intune auto-enrollment</text>
+<line x1="1500" y1="1000" x2="1585" y2="1000" stroke="#7030A0" stroke-width="2" stroke-dasharray="6,4" marker-end="url(#ahp)"/>
+<text x="1492" y="994" class="mp" text-anchor="end" style="text-anchor:end">clients: MDE onboarding (Intune EDR policy)</text>
 </svg>
