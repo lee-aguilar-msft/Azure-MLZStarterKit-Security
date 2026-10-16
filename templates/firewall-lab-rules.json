@@ -1,0 +1,794 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "metadata": {
+    "description": "MLZ Security Lab: (re)apply the LAB-SecurityCollectionGroup firewall rules to the hub firewall policy. Deploy to the hub resource group."
+  },
+  "parameters": {
+    "firewallPolicyName": {
+      "type": "string",
+      "metadata": {
+        "description": "Name of the MLZ hub firewall policy (Microsoft.Network/firewallPolicies) in this resource group."
+      }
+    },
+    "virtualNetworkAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.60.0.0/24",
+      "metadata": {
+        "description": "Address prefix of the lab (Tier 3) virtual network - the source of the lab rules."
+      }
+    },
+    "allowAllAzureServiceTags": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Include the AzureCloud catch-all network rule collection."
+      }
+    }
+  },
+  "variables": {
+    "adminFqdnsCom": [
+      "login.microsoft.com",
+      "login.microsoftonline.com",
+      "login.live.com",
+      "*.aadcdn.msftauth.net",
+      "*.aadcdn.msftauthimages.net",
+      "*.aadcdn.msauthimages.net",
+      "*.logincdn.msftauth.net",
+      "*.msauth.net",
+      "*.aadcdn.microsoftonline-p.com",
+      "*.microsoftonline-p.com",
+      "*.portal.azure.com",
+      "portal.azure.com",
+      "*.hosting.portal.azure.net",
+      "*.hosting-ms.portal.azure.net",
+      "*.reactblade.portal.azure.net",
+      "management.azure.com",
+      "*.ext.azure.com",
+      "*.graph.windows.net",
+      "*.graph.microsoft.com",
+      "hosting.partners.azure.net",
+      "*.microsoftonline.com",
+      "*.msappproxy.net",
+      "*.servicebus.windows.net",
+      "*.msftauth.net",
+      "*.msecnd.net",
+      "download.microsoft.com",
+      "*.download.microsoft.com",
+      "go.microsoft.com",
+      "aka.ms",
+      "catalogartifact.azureedge.net"
+    ],
+    "adminFqdnsGov": [
+      "*.applicationinsights.us",
+      "*.azure.us",
+      "azure.us",
+      "*.azureedge.net",
+      "*.azureedge.us",
+      "*.loganalytics.us",
+      "*.microsoft.us",
+      "*.microsoftonline.us",
+      "*.msauth.net",
+      "*.msidentity.us",
+      "*.s-microsoft.com",
+      "*.usgovcloudapi.net",
+      "*.usgovtrafficmanager.net",
+      "*.windowsazure.us",
+      "graph.microsoftazure.us",
+      "main.ff.marketplacedataprovider.azure.us",
+      "*.msappproxy.us",
+      "login.windows.us",
+      "secure.aadcdn.microsoftonline-p.com",
+      "*.microsoftonline-p.us",
+      "*.msauthimages.net",
+      "*.msecnd.net",
+      "*.msftauth.net",
+      "*.msftauthimages.net",
+      "*.phonefactor.net",
+      "enterpriseregistration.windows.net",
+      "policykeyservice.dc.ad.msft.net",
+      "ocsp.msocsp.us",
+      "ctldl.windowsupdate.us",
+      "download.microsoft.com",
+      "*.download.microsoft.com",
+      "go.microsoft.com",
+      "aka.ms"
+    ],
+    "arcFqdnsCom": [
+      "login.microsoftonline.com",
+      "*.login.microsoft.com",
+      "pas.windows.net",
+      "management.azure.com",
+      "*.his.arc.azure.com",
+      "*.guestconfiguration.azure.com",
+      "guestnotificationservice.azure.com",
+      "*.guestnotificationservice.azure.com",
+      "*.servicebus.windows.net",
+      "packages.microsoft.com",
+      "download.microsoft.com",
+      "www.microsoft.com"
+    ],
+    "arcFqdnsGov": [
+      "login.microsoftonline.us",
+      "management.usgovcloudapi.net",
+      "pasff.usgovcloudapi.net",
+      "*.his.arc.azure.us",
+      "*.guestconfiguration.azure.us",
+      "guestnotificationservice.azure.us",
+      "*.guestnotificationservice.azure.us",
+      "*.servicebus.usgovcloudapi.net",
+      "*.blob.core.usgovcloudapi.net",
+      "packages.microsoft.com",
+      "download.microsoft.com",
+      "www.microsoft.com"
+    ],
+    "entraFqdnsCom": [
+      "login.microsoftonline.com",
+      "device.login.microsoftonline.com",
+      "enterpriseregistration.windows.net",
+      "autologon.microsoftazuread-sso.com",
+      "login.live.com"
+    ],
+    "entraFqdnsGov": [
+      "login.microsoftonline.us",
+      "device.login.microsoftonline.us",
+      "enterpriseregistration.microsoftonline.us",
+      "autologon.microsoftazuread-sso.com",
+      "*.wns.windows.com",
+      "login.live.com"
+    ],
+    "intuneFqdnsCom": [
+      "*.manage.microsoft.com",
+      "*.dm.microsoft.com",
+      "enterpriseregistration.windows.net",
+      "intune.microsoft.com",
+      "*.events.data.microsoft.com"
+    ],
+    "intuneFqdnsGov": [
+      "*.manage.microsoft.us",
+      "portal.manage.microsoft.us",
+      "enrollment.manage.microsoft.us",
+      "intune.microsoft.us",
+      "portal.azure.us",
+      "graph.microsoft.us",
+      "*.dm.microsoft.us",
+      "enterpriseregistration.microsoftonline.us",
+      "*.events.data.microsoft.com"
+    ],
+    "labRuleCollectionsBase": [
+      {
+        "name": "LAB-NetworkRules",
+        "priority": 410,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "Allow-Azure-ServiceTags-TCP",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "443"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [
+              "AzureActiveDirectory",
+              "AzureResourceManager",
+              "AzureKeyVault",
+              "Storage",
+              "AzureMonitor",
+              "AzureFrontDoor.Frontend",
+              "AzureFrontDoor.MicrosoftSecurity",
+              "MicrosoftContainerRegistry",
+              "GuestAndHybridManagement",
+              "AzureArcInfrastructure",
+              "EventHub"
+            ],
+            "destinationFqdns": []
+          },
+          {
+            "name": "Allow-KMS-Activation",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "1688"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [],
+            "destinationFqdns": [
+              "[format('azkms.{0}', environment().suffixes.storage)]",
+              "[format('kms.{0}', environment().suffixes.storage)]"
+            ]
+          },
+          {
+            "name": "Allow-NTP",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "UDP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "123"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [],
+            "destinationFqdns": [
+              "time.windows.com"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "LAB-ApplicationRules",
+        "priority": 420,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "Allow-FQDNTags",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [
+              "WindowsUpdate",
+              "MicrosoftIntune",
+              "Windows365",
+              "WindowsDiagnostics",
+              "MicrosoftActiveProtectionService",
+              "AzureBackup"
+            ],
+            "webCategories": [],
+            "targetFqdns": [],
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-MDE",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('mdeFqdnsGov'), variables('mdeFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Intune",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('intuneFqdnsGov'), variables('intuneFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Arc",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('arcFqdnsGov'), variables('arcFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Entra-DeviceReg",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('entraFqdnsGov'), variables('entraFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Linux-Repos",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[variables('linuxRepoFqdns')]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-PKI-CRL-OCSP",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[variables('pkiFqdns')]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Admin-Portal-EntraConnect",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('adminFqdnsGov'), variables('adminFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          }
+        ]
+      }
+    ],
+    "labRuleCollectionsWithCatchAll": [
+      {
+        "name": "LAB-AzureCloud-CatchAll",
+        "priority": 405,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "Allow-AzureCloud-All",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "443",
+              "1688",
+              "5671",
+              "5672"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [
+              "AzureCloud"
+            ],
+            "destinationFqdns": []
+          }
+        ]
+      },
+      {
+        "name": "LAB-NetworkRules",
+        "priority": 410,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "Allow-Azure-ServiceTags-TCP",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "443"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [
+              "AzureActiveDirectory",
+              "AzureResourceManager",
+              "AzureKeyVault",
+              "Storage",
+              "AzureMonitor",
+              "AzureFrontDoor.Frontend",
+              "AzureFrontDoor.MicrosoftSecurity",
+              "MicrosoftContainerRegistry",
+              "GuestAndHybridManagement",
+              "AzureArcInfrastructure",
+              "EventHub"
+            ],
+            "destinationFqdns": []
+          },
+          {
+            "name": "Allow-KMS-Activation",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "1688"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [],
+            "destinationFqdns": [
+              "[format('azkms.{0}', environment().suffixes.storage)]",
+              "[format('kms.{0}', environment().suffixes.storage)]"
+            ]
+          },
+          {
+            "name": "Allow-NTP",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "UDP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "123"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [],
+            "destinationFqdns": [
+              "time.windows.com"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "LAB-ApplicationRules",
+        "priority": 420,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "Allow-FQDNTags",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [
+              "WindowsUpdate",
+              "MicrosoftIntune",
+              "Windows365",
+              "WindowsDiagnostics",
+              "MicrosoftActiveProtectionService",
+              "AzureBackup"
+            ],
+            "webCategories": [],
+            "targetFqdns": [],
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-MDE",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('mdeFqdnsGov'), variables('mdeFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Intune",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('intuneFqdnsGov'), variables('intuneFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Arc",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('arcFqdnsGov'), variables('arcFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Entra-DeviceReg",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('entraFqdnsGov'), variables('entraFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Linux-Repos",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[variables('linuxRepoFqdns')]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-PKI-CRL-OCSP",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[variables('pkiFqdns')]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Admin-Portal-EntraConnect",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('adminFqdnsGov'), variables('adminFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          }
+        ]
+      }
+    ],
+    "linuxRepoFqdns": [
+      "packages.microsoft.com",
+      "rhui-1.microsoft.com",
+      "rhui-2.microsoft.com",
+      "rhui-3.microsoft.com",
+      "rhui-4.microsoft.com",
+      "rhui4-1.microsoft.com",
+      "rhui4-2.microsoft.com",
+      "rhui4-3.microsoft.com",
+      "security.ubuntu.com",
+      "archive.ubuntu.com",
+      "*.archive.ubuntu.com",
+      "azure.archive.ubuntu.com",
+      "changelogs.ubuntu.com",
+      "*.ubuntu.com",
+      "esm.ubuntu.com",
+      "motd.ubuntu.com",
+      "contracts.canonical.com",
+      "*.snapcraft.io",
+      "cdn.redhat.com",
+      "*.cdn.redhat.com",
+      "subscription.rhsm.redhat.com",
+      "*.akamaiedge.net",
+      "*.akamaitechnologies.com",
+      "scc.suse.com",
+      "*.susecloud.net",
+      "updates.suse.com"
+    ],
+    "mdeFqdnsCom": [
+      "*.endpoint.security.microsoft.com",
+      "*.securitycenter.windows.com",
+      "*.securitycenter.microsoft.com",
+      "*.wd.microsoft.com",
+      "*.blob.core.windows.net",
+      "events.data.microsoft.com",
+      "*.events.data.microsoft.com",
+      "crl.microsoft.com",
+      "ctldl.windowsupdate.com",
+      "www.microsoft.com",
+      "*.wns.windows.com",
+      "login.microsoftonline.com",
+      "login.live.com"
+    ],
+    "mdeFqdnsGov": [
+      "*.endpoint.security.microsoft.us",
+      "*.securitycenter.microsoft.us",
+      "*.gcc.securitycenter.microsoft.us",
+      "unitedstates1.ss.wd.microsoft.us",
+      "unitedstates2.ss.wd.microsoft.us",
+      "unitedstates4.ss.wd.microsoft.us",
+      "*.blob.core.usgovcloudapi.net",
+      "config.ecs.gov.teams.microsoft.us",
+      "config.ecs.dod.teams.microsoft.us",
+      "crl.microsoft.com",
+      "ctldl.windowsupdate.com",
+      "www.microsoft.com",
+      "*.wns.windows.com",
+      "login.microsoftonline.us",
+      "login.live.com"
+    ],
+    "pkiFqdns": [
+      "crl.microsoft.com",
+      "*.crl.microsoft.com",
+      "www.microsoft.com",
+      "ctldl.windowsupdate.com",
+      "oneocsp.microsoft.com",
+      "ocsp.digicert.com",
+      "*.digicert.com",
+      "cacerts.digicert.com"
+    ]
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Network/firewallPolicies/ruleCollectionGroups",
+      "apiVersion": "2024-03-01",
+      "name": "[format('{0}/LAB-SecurityCollectionGroup', parameters('firewallPolicyName'))]",
+      "properties": {
+        "priority": 400,
+        "ruleCollections": "[if(parameters('allowAllAzureServiceTags'), variables('labRuleCollectionsWithCatchAll'), variables('labRuleCollectionsBase'))]"
+      }
+    }
+  ]
+}
