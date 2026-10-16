@@ -98,7 +98,7 @@ if (-not $sp) {
 
 # ---------------- 3. Conditional Access (report, or exclude with the switch) ----------------
 try {
-  $policies = (Invoke-MgGraphRequest -Method GET -Uri 'v1.0/identity/conditionalAccess/policies').value | Where-Object { $_.state -ne 'disabled' }
+  $policies = (Invoke-MgGraphRequest -Method GET -Uri 'v1.0/identity/conditionalAccess/policies').value | Where-Object { $_.state -eq 'enabled' }   # report-only policies never block enrollment
   $hits = $policies | Where-Object { $_.conditions.applications.includeApplications -contains 'All' -and $_.conditions.applications.excludeApplications -notcontains $intuneEnrollmentAppId }
   if (-not $hits) { Write-Output 'Conditional Access: no enabled all-apps policy is missing the Intune Enrollment exclusion.' }
   foreach ($p in $hits) {
@@ -117,7 +117,8 @@ try {
       Invoke-MgGraphRequest -Method PATCH -Uri "v1.0/identity/conditionalAccess/policies/$($p.id)" -Body $patch -ContentType 'application/json' | Out-Null
       Write-Output "Conditional Access: excluded Intune Enrollment from '$($p.displayName)'"
     } else {
-      Write-Warning "Conditional Access policy '$($p.displayName)' targets all apps and does not exclude Microsoft Intune Enrollment ($intuneEnrollmentAppId). Re-run with -ExcludeIntuneEnrollmentFromCa or exclude it in the portal."
+      $scope = @(@($u.includeUsers) + @($u.includeGroups | ForEach-Object { "group:$_" }) + @($u.includeRoles | ForEach-Object { "role:$_" })) -join ', '
+      Write-Warning "Conditional Access policy '$($p.displayName)' (users: $scope) targets all apps and does not exclude Microsoft Intune Enrollment ($intuneEnrollmentAppId). Re-run with -ExcludeIntuneEnrollmentFromCa or exclude it in the portal."
     }
   }
 } catch { Write-Warning "Conditional Access check skipped: $($_.Exception.Message)" }
