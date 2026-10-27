@@ -1,0 +1,1914 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2018-05-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "location": {
+      "type": "string",
+      "metadata": {
+        "description": "Deployment location."
+      }
+    },
+    "deploymentNameSuffix": {
+      "type": "string",
+      "defaultValue": "[utcNow()]",
+      "metadata": {
+        "description": "Suffix used to keep deployment names unique."
+      }
+    },
+    "identifier": {
+      "type": "string",
+      "maxLength": 3,
+      "metadata": {
+        "description": "MLZ identifier (max 3 chars)."
+      }
+    },
+    "environmentAbbreviation": {
+      "type": "string",
+      "defaultValue": "dev",
+      "allowedValues": [
+        "dev",
+        "test",
+        "prod"
+      ]
+    },
+    "deployBastion": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy Bastion in core MLZ hub."
+      }
+    },
+    "deployActivityLogDiagnosticSetting": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefender": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefenderCspm": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefenderForServers": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "defenderForServersSubPlan": {
+      "type": "string",
+      "defaultValue": "P2",
+      "allowedValues": [
+        "P1",
+        "P2"
+      ]
+    },
+    "deployDefenderForStorage": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefenderForSql": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefenderForContainers": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefenderForAppService": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefenderForKeyVault": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefenderForArm": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefenderForOssDb": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefenderForCosmosDb": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployDefenderForApis": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "defenderForApisSubPlan": {
+      "type": "string",
+      "defaultValue": "P1",
+      "allowedValues": [
+        "P1",
+        "P2",
+        "P3",
+        "P4",
+        "P5"
+      ],
+      "metadata": {
+        "description": "Defender for APIs pricing plan (P1 = up to 1M API calls/month; required by the Microsoft.Security/pricings 'Api' resource)."
+      }
+    },
+    "deployPolicy": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployNist80053": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployNist800171": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deployMcsb": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Assign the Microsoft cloud security benchmark (MCSB) initiative \u2014 the Defender CSPM baseline \u2014 in audit-only mode. Available in Azure Government and Commercial."
+      }
+    },
+    "deploySentinel": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "emailSecurityContact": {
+      "type": "string",
+      "defaultValue": "security@example.mil"
+    },
+    "virtualNetworkAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.60.0.0/24"
+    },
+    "subnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.60.0.0/25"
+    },
+    "workloadName": {
+      "type": "string"
+    },
+    "workloadShortName": {
+      "type": "string"
+    },
+    "prefix": {
+      "type": "string"
+    },
+    "domainControllerPrivateIp": {
+      "type": "string",
+      "defaultValue": "10.60.0.10"
+    },
+    "additionalDnsServers": {
+      "type": "array",
+      "defaultValue": []
+    },
+    "adminUsername": {
+      "type": "string"
+    },
+    "adminPassword": {
+      "type": "secureString"
+    },
+    "safeModeAdminPassword": {
+      "type": "secureString"
+    },
+    "domainName": {
+      "type": "string"
+    },
+    "domainNetbiosName": {
+      "type": "string"
+    },
+    "autoCreateEntraGroup": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "When true, creates a new Entra security group and uses its Object ID for VM login RBAC."
+      }
+    },
+    "entraGroupName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Display name for the auto-created Entra security group. Used only when autoCreateEntraGroup is true."
+      }
+    },
+    "existingWorkspaceResourceId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Resource ID of an existing Log Analytics workspace. Leave empty to use the MLZ-provisioned workspace."
+      }
+    },
+    "customWorkspaceName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional custom name for a new Log Analytics workspace created in the workload resource group."
+      }
+    },
+    "cspmStorageAccountName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional custom Storage account name (3-24 chars, lowercase alphanumeric only)."
+      }
+    },
+    "cspmAcrName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional custom Container Registry name (5-50 chars, alphanumeric)."
+      }
+    },
+    "cspmSqlServerName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional custom SQL Server name (1-63 chars, lowercase, numbers, hyphens)."
+      }
+    },
+    "cspmSqlDatabaseName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional custom SQL Database name. Defaults to 'defenderdb'."
+      }
+    },
+    "cspmBlobContainerName": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Optional custom Blob container name. Defaults to 'coverage-container'."
+      }
+    },
+    "entraLoginPrincipalId": {
+      "type": "string",
+      "defaultValue": "",
+      "metadata": {
+        "description": "Object ID of the Entra user, group, or service principal for VM login. Leave empty when autoCreateEntraGroup is true."
+      }
+    },
+    "entraPrincipalType": {
+      "type": "string",
+      "defaultValue": "Group",
+      "allowedValues": [
+        "User",
+        "Group",
+        "ServicePrincipal"
+      ]
+    },
+    "assignVmAdminRole": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "assignVmUserRole": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "serverVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D4ads_v6"
+    },
+    "clientVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D4ads_v6"
+    },
+    "serverImagePublisher": {
+      "type": "string",
+      "defaultValue": "MicrosoftWindowsServer"
+    },
+    "serverImageOffer": {
+      "type": "string",
+      "defaultValue": "WindowsServer"
+    },
+    "serverImageSku": {
+      "type": "string",
+      "defaultValue": "2022-datacenter-g2"
+    },
+    "serverImageVersion": {
+      "type": "string",
+      "defaultValue": "latest"
+    },
+    "clientImagePublisher": {
+      "type": "string",
+      "defaultValue": "MicrosoftWindowsDesktop"
+    },
+    "clientImageOffer": {
+      "type": "string",
+      "defaultValue": "windows-11"
+    },
+    "clientImageSku": {
+      "type": "string",
+      "defaultValue": "win11-23h2-pro"
+    },
+    "clientImageVersion": {
+      "type": "string",
+      "defaultValue": "latest"
+    },
+    "linuxVmSize": {
+      "type": "string",
+      "defaultValue": "Standard_D2ads_v6"
+    },
+    "deployFirewallRules": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Add the lab firewall rule collection group (Intune/MDE/Arc/Entra/Linux/PKI + Azure service tags) to the MLZ hub firewall policy."
+      }
+    },
+    "allowAllAzureServiceTags": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Also allow the workload subnet outbound to the AzureCloud service tag (all Azure services). Broad; appropriate for a lab."
+      }
+    },
+    "cloudSuffix": {
+      "type": "string",
+      "defaultValue": "us",
+      "allowedValues": [
+        "us",
+        "com"
+      ],
+      "metadata": {
+        "description": "'us' = Azure Government / GCC High; 'com' = commercial."
+      }
+    },
+    "dnsForwarders": {
+      "type": "string",
+      "defaultValue": "168.63.129.16",
+      "metadata": {
+        "description": "Upstream DNS the DC forwards to (hub firewall private IP when DNS proxy is on, else 168.63.129.16)."
+      }
+    },
+    "ouRoot": {
+      "type": "string",
+      "defaultValue": "LAB"
+    },
+    "upnSuffix": {
+      "type": "string",
+      "defaultValue": ""
+    },
+    "labUserName": {
+      "type": "string",
+      "defaultValue": "lab.user"
+    },
+    "labUserPassword": {
+      "type": "secureString",
+      "defaultValue": ""
+    },
+    "intuneCredentialType": {
+      "type": "string",
+      "defaultValue": "1",
+      "allowedValues": [
+        "1",
+        "2"
+      ]
+    },
+    "mdeOnboardingBlob": {
+      "type": "secureString",
+      "defaultValue": ""
+    },
+    "deployHydration": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "hydrationIntervalMinutes": {
+      "type": "string",
+      "defaultValue": "60"
+    },
+    "autoShutdownTime": {
+      "type": "string",
+      "defaultValue": "0300"
+    },
+    "autoShutdownTimeZone": {
+      "type": "string",
+      "defaultValue": "UTC"
+    },
+    "deployLinuxVms": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "deployArcPrivateLink": {
+      "type": "bool",
+      "defaultValue": false,
+      "metadata": {
+        "description": "Deploy the Azure Arc Private Link Scope + Arc private DNS zones (preview API)."
+      }
+    },
+    "deployPrivateDnsResolver": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "resolverSubnetAddressPrefix": {
+      "type": "string",
+      "defaultValue": "10.60.0.128/28"
+    },
+    "usePrivateIngestion": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "deploySentinelContentScript": {
+      "type": "bool",
+      "defaultValue": false
+    },
+    "enableSentinelAnalytics": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Install Content Hub solutions and enable all matching built-in analytics rules + UEBA (via the in-template deploymentScript when deploySentinelContentScript is true, otherwise run by the GitHub Action / Cloud Shell)."
+      }
+    },
+    "enableXdrConnector": {
+      "type": "bool",
+      "defaultValue": true
+    },
+    "deployCspmKeyVault": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "CSPM coverage: deploy a Key Vault for Defender for Key Vault."
+      }
+    },
+    "deployCspmSql": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "Deploy the CSPM sample Azure SQL server/database. Turn off if the subscription is not yet enabled for SQL in the region."
+      }
+    },
+    "deployCspmAppService": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "CSPM coverage: deploy an App Service plan (B1) + web app for Defender for App Service."
+      }
+    },
+    "deployCspmApiManagement": {
+      "type": "bool",
+      "defaultValue": true,
+      "metadata": {
+        "description": "CSPM coverage: deploy API Management + a sample API for Defender for APIs."
+      }
+    },
+    "cspmApimSku": {
+      "type": "string",
+      "defaultValue": "Developer",
+      "allowedValues": [
+        "Developer",
+        "BasicV2",
+        "StandardV2",
+        "Basic",
+        "Standard",
+        "Premium"
+      ],
+      "metadata": {
+        "description": "API Management SKU for the CSPM sample. Developer works in all clouds (slow to provision); v2 tiers are fast where available."
+      }
+    }
+  },
+  "variables": {
+    "coreDeploymentName": "[format('deploy-mlz-core-{0}', parameters('deploymentNameSuffix'))]",
+    "tier3DeploymentName": "[format('deploy-tier3-{0}', parameters('deploymentNameSuffix'))]",
+    "labVmDeploymentName": "[format('deploy-ad-entra-vms-{0}', parameters('deploymentNameSuffix'))]",
+    "cspmCoverageDeploymentName": "[format('deploy-cspm-coverage-{0}', parameters('deploymentNameSuffix'))]",
+    "entraGroupUniqueName": "[if(empty(parameters('entraGroupName')), format('mlz-{0}-vm-users', parameters('prefix')), parameters('entraGroupName'))]",
+    "locationAbbreviations": {
+      "australiacentral": "auc",
+      "australiacentral2": "auc2",
+      "australiaeast": "aue",
+      "australiasoutheast": "ause",
+      "brazilsouth": "brs",
+      "brazilsoutheast": "brse",
+      "canadacentral": "cac",
+      "canadaeast": "cae",
+      "centralindia": "inc",
+      "centralus": "usc",
+      "eastasia": "ase",
+      "eastus": "use",
+      "eastus2": "use2",
+      "francecentral": "frc",
+      "francesouth": "frs",
+      "germanynorth": "den",
+      "germanywestcentral": "dewc",
+      "israelcentral": "ilc",
+      "italynorth": "itn",
+      "japaneast": "jpe",
+      "japanwest": "jpw",
+      "jioindiacentral": "injc",
+      "jioindiawest": "injw",
+      "koreacentral": "krc",
+      "koreasouth": "krs",
+      "northcentralus": "usnc",
+      "northeurope": "eun",
+      "norwayeast": "noe",
+      "norwaywest": "now",
+      "polandcentral": "plc",
+      "qatarcentral": "qac",
+      "southafricanorth": "zan",
+      "southafricawest": "zaw",
+      "southcentralus": "ussc",
+      "southeastasia": "asse",
+      "southindia": "ins",
+      "swedencentral": "sec",
+      "switzerlandnorth": "chn",
+      "switzerlandwest": "chw",
+      "uaecentral": "aec",
+      "uaenorth": "aen",
+      "uksouth": "uks",
+      "ukwest": "ukw",
+      "westcentralus": "uswc",
+      "westeurope": "euw",
+      "westindia": "inw",
+      "westus": "usw",
+      "westus2": "usw2",
+      "westus3": "usw3",
+      "chinaeast": "cne",
+      "chinaeast2": "cne2",
+      "chinanorth": "cnn",
+      "chinanorth2": "cnn2",
+      "usdodcentral": "dodc",
+      "usdodeast": "dode",
+      "usgovarizona": "az",
+      "usgovtexas": "tx",
+      "usgovvirginia": "va"
+    },
+    "tier3ResourceGroupName": "[format('{0}-{1}-{2}-{3}-rg-network', toLower(parameters('identifier')), parameters('environmentAbbreviation'), variables('locationAbbreviations')[parameters('location')], parameters('workloadName'))]",
+    "mdeFqdnsGov": [
+      "*.endpoint.security.microsoft.us",
+      "*.securitycenter.microsoft.us",
+      "*.gcc.securitycenter.microsoft.us",
+      "unitedstates1.ss.wd.microsoft.us",
+      "unitedstates2.ss.wd.microsoft.us",
+      "unitedstates4.ss.wd.microsoft.us",
+      "*.blob.core.usgovcloudapi.net",
+      "config.ecs.gov.teams.microsoft.us",
+      "config.ecs.dod.teams.microsoft.us",
+      "crl.microsoft.com",
+      "ctldl.windowsupdate.com",
+      "www.microsoft.com",
+      "*.wns.windows.com",
+      "login.microsoftonline.us",
+      "login.live.com"
+    ],
+    "mdeFqdnsCom": [
+      "*.endpoint.security.microsoft.com",
+      "*.securitycenter.windows.com",
+      "*.securitycenter.microsoft.com",
+      "*.wd.microsoft.com",
+      "*.blob.core.windows.net",
+      "events.data.microsoft.com",
+      "*.events.data.microsoft.com",
+      "crl.microsoft.com",
+      "ctldl.windowsupdate.com",
+      "www.microsoft.com",
+      "*.wns.windows.com",
+      "login.microsoftonline.com",
+      "login.live.com"
+    ],
+    "intuneFqdnsGov": [
+      "*.manage.microsoft.us",
+      "portal.manage.microsoft.us",
+      "enrollment.manage.microsoft.us",
+      "intune.microsoft.us",
+      "portal.azure.us",
+      "graph.microsoft.us",
+      "*.dm.microsoft.us",
+      "enterpriseregistration.microsoftonline.us",
+      "*.events.data.microsoft.com"
+    ],
+    "intuneFqdnsCom": [
+      "*.manage.microsoft.com",
+      "*.dm.microsoft.com",
+      "enterpriseregistration.windows.net",
+      "intune.microsoft.com",
+      "*.events.data.microsoft.com"
+    ],
+    "arcFqdnsGov": [
+      "login.microsoftonline.us",
+      "management.usgovcloudapi.net",
+      "pasff.usgovcloudapi.net",
+      "*.his.arc.azure.us",
+      "*.guestconfiguration.azure.us",
+      "guestnotificationservice.azure.us",
+      "*.guestnotificationservice.azure.us",
+      "*.servicebus.usgovcloudapi.net",
+      "*.blob.core.usgovcloudapi.net",
+      "packages.microsoft.com",
+      "download.microsoft.com",
+      "www.microsoft.com"
+    ],
+    "arcFqdnsCom": [
+      "login.microsoftonline.com",
+      "*.login.microsoft.com",
+      "pas.windows.net",
+      "management.azure.com",
+      "*.his.arc.azure.com",
+      "*.guestconfiguration.azure.com",
+      "guestnotificationservice.azure.com",
+      "*.guestnotificationservice.azure.com",
+      "*.servicebus.windows.net",
+      "packages.microsoft.com",
+      "download.microsoft.com",
+      "www.microsoft.com"
+    ],
+    "entraFqdnsGov": [
+      "login.microsoftonline.us",
+      "device.login.microsoftonline.us",
+      "enterpriseregistration.microsoftonline.us",
+      "autologon.microsoftazuread-sso.com",
+      "*.wns.windows.com",
+      "login.live.com"
+    ],
+    "entraFqdnsCom": [
+      "login.microsoftonline.com",
+      "device.login.microsoftonline.com",
+      "enterpriseregistration.windows.net",
+      "autologon.microsoftazuread-sso.com",
+      "login.live.com"
+    ],
+    "linuxRepoFqdns": [
+      "packages.microsoft.com",
+      "rhui-1.microsoft.com",
+      "rhui-2.microsoft.com",
+      "rhui-3.microsoft.com",
+      "rhui-4.microsoft.com",
+      "rhui4-1.microsoft.com",
+      "rhui4-2.microsoft.com",
+      "rhui4-3.microsoft.com",
+      "security.ubuntu.com",
+      "archive.ubuntu.com",
+      "*.archive.ubuntu.com",
+      "azure.archive.ubuntu.com",
+      "changelogs.ubuntu.com",
+      "*.ubuntu.com",
+      "esm.ubuntu.com",
+      "motd.ubuntu.com",
+      "contracts.canonical.com",
+      "*.snapcraft.io",
+      "cdn.redhat.com",
+      "*.cdn.redhat.com",
+      "subscription.rhsm.redhat.com",
+      "*.akamaiedge.net",
+      "*.akamaitechnologies.com",
+      "scc.suse.com",
+      "*.susecloud.net",
+      "updates.suse.com"
+    ],
+    "pkiFqdns": [
+      "crl.microsoft.com",
+      "*.crl.microsoft.com",
+      "www.microsoft.com",
+      "ctldl.windowsupdate.com",
+      "oneocsp.microsoft.com",
+      "ocsp.digicert.com",
+      "*.digicert.com",
+      "cacerts.digicert.com"
+    ],
+    "labRuleCollectionsBase": [
+      {
+        "name": "LAB-NetworkRules",
+        "priority": 410,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "Allow-Azure-ServiceTags-TCP",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "443"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [
+              "AzureActiveDirectory",
+              "AzureResourceManager",
+              "AzureKeyVault",
+              "Storage",
+              "AzureMonitor",
+              "AzureFrontDoor.Frontend",
+              "AzureFrontDoor.MicrosoftSecurity",
+              "MicrosoftContainerRegistry",
+              "GuestAndHybridManagement",
+              "AzureArcInfrastructure",
+              "EventHub"
+            ],
+            "destinationFqdns": []
+          },
+          {
+            "name": "Allow-KMS-Activation",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "1688"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [],
+            "destinationFqdns": [
+              "[format('azkms.{0}', environment().suffixes.storage)]",
+              "[format('kms.{0}', environment().suffixes.storage)]"
+            ]
+          },
+          {
+            "name": "Allow-NTP",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "UDP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "123"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [],
+            "destinationFqdns": [
+              "time.windows.com"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "LAB-ApplicationRules",
+        "priority": 420,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "Allow-FQDNTags",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [
+              "WindowsUpdate",
+              "MicrosoftIntune",
+              "Windows365",
+              "WindowsDiagnostics",
+              "MicrosoftActiveProtectionService",
+              "AzureBackup"
+            ],
+            "webCategories": [],
+            "targetFqdns": [],
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-MDE",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('mdeFqdnsGov'), variables('mdeFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Intune",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('intuneFqdnsGov'), variables('intuneFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Arc",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('arcFqdnsGov'), variables('arcFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Entra-DeviceReg",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('entraFqdnsGov'), variables('entraFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Linux-Repos",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[variables('linuxRepoFqdns')]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-PKI-CRL-OCSP",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[variables('pkiFqdns')]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Admin-Portal-EntraConnect",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('adminFqdnsGov'), variables('adminFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          }
+        ]
+      }
+    ],
+    "labRuleCollectionsWithCatchAll": [
+      {
+        "name": "LAB-AzureCloud-CatchAll",
+        "priority": 405,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "Allow-AzureCloud-All",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "443",
+              "1688",
+              "5671",
+              "5672"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [
+              "AzureCloud"
+            ],
+            "destinationFqdns": []
+          }
+        ]
+      },
+      {
+        "name": "LAB-NetworkRules",
+        "priority": 410,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "Allow-Azure-ServiceTags-TCP",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "443"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [
+              "AzureActiveDirectory",
+              "AzureResourceManager",
+              "AzureKeyVault",
+              "Storage",
+              "AzureMonitor",
+              "AzureFrontDoor.Frontend",
+              "AzureFrontDoor.MicrosoftSecurity",
+              "MicrosoftContainerRegistry",
+              "GuestAndHybridManagement",
+              "AzureArcInfrastructure",
+              "EventHub"
+            ],
+            "destinationFqdns": []
+          },
+          {
+            "name": "Allow-KMS-Activation",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "TCP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "1688"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [],
+            "destinationFqdns": [
+              "[format('azkms.{0}', environment().suffixes.storage)]",
+              "[format('kms.{0}', environment().suffixes.storage)]"
+            ]
+          },
+          {
+            "name": "Allow-NTP",
+            "ruleType": "NetworkRule",
+            "ipProtocols": [
+              "UDP"
+            ],
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": [],
+            "destinationPorts": [
+              "123"
+            ],
+            "destinationIpGroups": [],
+            "destinationAddresses": [],
+            "destinationFqdns": [
+              "time.windows.com"
+            ]
+          }
+        ]
+      },
+      {
+        "name": "LAB-ApplicationRules",
+        "priority": 420,
+        "ruleCollectionType": "FirewallPolicyFilterRuleCollection",
+        "action": {
+          "type": "Allow"
+        },
+        "rules": [
+          {
+            "name": "Allow-FQDNTags",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [
+              "WindowsUpdate",
+              "MicrosoftIntune",
+              "Windows365",
+              "WindowsDiagnostics",
+              "MicrosoftActiveProtectionService",
+              "AzureBackup"
+            ],
+            "webCategories": [],
+            "targetFqdns": [],
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-MDE",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('mdeFqdnsGov'), variables('mdeFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Intune",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('intuneFqdnsGov'), variables('intuneFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Arc",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('arcFqdnsGov'), variables('arcFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Entra-DeviceReg",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('entraFqdnsGov'), variables('entraFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Linux-Repos",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[variables('linuxRepoFqdns')]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-PKI-CRL-OCSP",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[variables('pkiFqdns')]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          },
+          {
+            "name": "Allow-Admin-Portal-EntraConnect",
+            "ruleType": "ApplicationRule",
+            "protocols": [
+              {
+                "protocolType": "Https",
+                "port": 443
+              },
+              {
+                "protocolType": "Http",
+                "port": 80
+              }
+            ],
+            "fqdnTags": [],
+            "webCategories": [],
+            "targetFqdns": "[if(equals(environment().name, 'AzureUSGovernment'), variables('adminFqdnsGov'), variables('adminFqdnsCom'))]",
+            "targetUrls": [],
+            "terminateTLS": false,
+            "sourceAddresses": [
+              "[parameters('virtualNetworkAddressPrefix')]"
+            ],
+            "sourceIpGroups": []
+          }
+        ]
+      }
+    ],
+    "labFirewallRuleCollectionGroups": [
+      {
+        "name": "LAB-SecurityCollectionGroup",
+        "properties": {
+          "priority": 400,
+          "ruleCollections": "[if(parameters('allowAllAzureServiceTags'), variables('labRuleCollectionsWithCatchAll'), variables('labRuleCollectionsBase'))]"
+        }
+      }
+    ],
+    "securityLabDeploymentName": "[format('deploy-security-lab-{0}', parameters('deploymentNameSuffix'))]",
+    "arcDeploymentName": "[format('deploy-arc-pls-{0}', parameters('deploymentNameSuffix'))]",
+    "labWorkspaceName": "[if(not(empty(parameters('customWorkspaceName'))), parameters('customWorkspaceName'), format('{0}-law-lab', parameters('prefix')))]",
+    "adminFqdnsGov": [
+      "*.applicationinsights.us",
+      "*.azure.us",
+      "azure.us",
+      "*.azureedge.net",
+      "*.azureedge.us",
+      "*.loganalytics.us",
+      "*.microsoft.us",
+      "*.microsoftonline.us",
+      "*.msauth.net",
+      "*.msidentity.us",
+      "*.s-microsoft.com",
+      "*.usgovcloudapi.net",
+      "*.usgovtrafficmanager.net",
+      "*.windowsazure.us",
+      "graph.microsoftazure.us",
+      "main.ff.marketplacedataprovider.azure.us",
+      "*.msappproxy.us",
+      "login.windows.us",
+      "secure.aadcdn.microsoftonline-p.com",
+      "*.microsoftonline-p.us",
+      "*.msauthimages.net",
+      "*.msecnd.net",
+      "*.msftauth.net",
+      "*.msftauthimages.net",
+      "*.phonefactor.net",
+      "enterpriseregistration.windows.net",
+      "policykeyservice.dc.ad.msft.net",
+      "ocsp.msocsp.us",
+      "ctldl.windowsupdate.us",
+      "download.microsoft.com",
+      "*.download.microsoft.com",
+      "go.microsoft.com",
+      "aka.ms"
+    ],
+    "adminFqdnsCom": [
+      "login.microsoft.com",
+      "login.microsoftonline.com",
+      "login.live.com",
+      "*.aadcdn.msftauth.net",
+      "*.aadcdn.msftauthimages.net",
+      "*.aadcdn.msauthimages.net",
+      "*.logincdn.msftauth.net",
+      "*.msauth.net",
+      "*.aadcdn.microsoftonline-p.com",
+      "*.microsoftonline-p.com",
+      "*.portal.azure.com",
+      "portal.azure.com",
+      "*.hosting.portal.azure.net",
+      "*.hosting-ms.portal.azure.net",
+      "*.reactblade.portal.azure.net",
+      "management.azure.com",
+      "*.ext.azure.com",
+      "*.graph.windows.net",
+      "*.graph.microsoft.com",
+      "hosting.partners.azure.net",
+      "*.microsoftonline.com",
+      "*.msappproxy.net",
+      "*.servicebus.windows.net",
+      "*.msftauth.net",
+      "*.msecnd.net",
+      "download.microsoft.com",
+      "*.download.microsoft.com",
+      "go.microsoft.com",
+      "aka.ms",
+      "catalogartifact.azureedge.net"
+    ]
+  },
+  "resources": [
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[variables('coreDeploymentName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "https://raw.githubusercontent.com/Azure/missionlz/main/src/mlz.json"
+        },
+        "parameters": {
+          "deploymentNameSuffix": {
+            "value": "[parameters('deploymentNameSuffix')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "identifier": {
+            "value": "[parameters('identifier')]"
+          },
+          "environmentAbbreviation": {
+            "value": "[parameters('environmentAbbreviation')]"
+          },
+          "deployBastion": {
+            "value": "[parameters('deployBastion')]"
+          },
+          "deployActiveDirectoryDomainServices": {
+            "value": false
+          },
+          "deployLinuxVirtualMachine": {
+            "value": false
+          },
+          "deployWindowsVirtualMachine": {
+            "value": false
+          },
+          "deployDefender": {
+            "value": "[parameters('deployDefender')]"
+          },
+          "deployPolicy": {
+            "value": "[parameters('deployPolicy')]"
+          },
+          "emailSecurityContact": {
+            "value": "[parameters('emailSecurityContact')]"
+          },
+          "managementVirtualMachineSize": {
+            "value": "Standard_D2ads_v6"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[variables('tier3DeploymentName')]",
+      "location": "[parameters('location')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', variables('coreDeploymentName'))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[uri(deployment().properties.templateLink.uri, 'templates/tier3.json')]"
+        },
+        "parameters": {
+          "deploymentNameSuffix": {
+            "value": "[parameters('deploymentNameSuffix')]"
+          },
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "identifier": {
+            "value": "[parameters('identifier')]"
+          },
+          "environmentAbbreviation": {
+            "value": "[parameters('environmentAbbreviation')]"
+          },
+          "deployActivityLogDiagnosticSetting": {
+            "value": "[parameters('deployActivityLogDiagnosticSetting')]"
+          },
+          "deployDefender": {
+            "value": "[parameters('deployDefender')]"
+          },
+          "deployPolicy": {
+            "value": "[parameters('deployPolicy')]"
+          },
+          "emailSecurityContact": {
+            "value": "[parameters('emailSecurityContact')]"
+          },
+          "firewallResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('coreDeploymentName')), '2025-04-01').outputs.azureFirewallResourceId.value]"
+          },
+          "hubStorageAccountResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('coreDeploymentName')), '2025-04-01').outputs.hubStorageAccountResourceId.value]"
+          },
+          "hubVirtualNetworkResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('coreDeploymentName')), '2025-04-01').outputs.hubVirtualNetworkResourceId.value]"
+          },
+          "logAnalyticsWorkspaceResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('coreDeploymentName')), '2025-04-01').outputs.logAnalyticsWorkspaceResourceId.value]"
+          },
+          "virtualNetworkAddressPrefix": {
+            "value": "[parameters('virtualNetworkAddressPrefix')]"
+          },
+          "subnetAddressPrefix": {
+            "value": "[parameters('subnetAddressPrefix')]"
+          },
+          "managementVirtualMachineSize": {
+            "value": "Standard_D2ads_v6"
+          },
+          "workloadName": {
+            "value": "[parameters('workloadName')]"
+          },
+          "workloadShortName": {
+            "value": "[parameters('workloadShortName')]"
+          },
+          "customFirewallRuleCollectionGroups": {
+            "value": "[if(parameters('deployFirewallRules'), variables('labFirewallRuleCollectionGroups'), createArray())]"
+          },
+          "additionalSubnets": {
+            "value": "[if(parameters('deployPrivateDnsResolver'), createArray(createObject('name', 'snet-dnspr', 'properties', createObject('addressPrefix', parameters('resolverSubnetAddressPrefix'), 'delegations', createArray(createObject('name', 'dnspr', 'properties', createObject('serviceName', 'Microsoft.Network/dnsResolvers')))))), createArray())]"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[variables('labVmDeploymentName')]",
+      "resourceGroup": "[variables('tier3ResourceGroupName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[uri(deployment().properties.templateLink.uri, 'templates/ad-entra-vms.json')]"
+        },
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "prefix": {
+            "value": "[parameters('prefix')]"
+          },
+          "subnetResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName')), '2025-04-01').outputs.tier.value.subnetResourceId]"
+          },
+          "domainControllerPrivateIp": {
+            "value": "[parameters('domainControllerPrivateIp')]"
+          },
+          "additionalDnsServers": {
+            "value": "[parameters('additionalDnsServers')]"
+          },
+          "adminUsername": {
+            "value": "[parameters('adminUsername')]"
+          },
+          "adminPassword": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "safeModeAdminPassword": {
+            "value": "[parameters('safeModeAdminPassword')]"
+          },
+          "domainName": {
+            "value": "[parameters('domainName')]"
+          },
+          "domainNetbiosName": {
+            "value": "[parameters('domainNetbiosName')]"
+          },
+          "entraLoginPrincipalId": {
+            "value": "[if(and(parameters('autoCreateEntraGroup'), equals(environment().name, 'AzureCloud')), reference(resourceId('Microsoft.Graph/groups', variables('entraGroupUniqueName')), '2023-07-01-preview').id, parameters('entraLoginPrincipalId'))]"
+          },
+          "entraPrincipalType": {
+            "value": "[parameters('entraPrincipalType')]"
+          },
+          "assignVmAdminRole": {
+            "value": "[parameters('assignVmAdminRole')]"
+          },
+          "assignVmUserRole": {
+            "value": "[parameters('assignVmUserRole')]"
+          },
+          "serverVmSize": {
+            "value": "[parameters('serverVmSize')]"
+          },
+          "clientVmSize": {
+            "value": "[parameters('clientVmSize')]"
+          },
+          "serverImagePublisher": {
+            "value": "[parameters('serverImagePublisher')]"
+          },
+          "serverImageOffer": {
+            "value": "[parameters('serverImageOffer')]"
+          },
+          "serverImageSku": {
+            "value": "[parameters('serverImageSku')]"
+          },
+          "serverImageVersion": {
+            "value": "[parameters('serverImageVersion')]"
+          },
+          "clientImagePublisher": {
+            "value": "[parameters('clientImagePublisher')]"
+          },
+          "clientImageOffer": {
+            "value": "[parameters('clientImageOffer')]"
+          },
+          "clientImageSku": {
+            "value": "[parameters('clientImageSku')]"
+          },
+          "clientImageVersion": {
+            "value": "[parameters('clientImageVersion')]"
+          },
+          "linuxVmSize": {
+            "value": "[parameters('linuxVmSize')]"
+          },
+          "dnsForwarders": {
+            "value": "[parameters('dnsForwarders')]"
+          },
+          "ouRoot": {
+            "value": "[parameters('ouRoot')]"
+          },
+          "upnSuffix": {
+            "value": "[parameters('upnSuffix')]"
+          },
+          "labUserName": {
+            "value": "[parameters('labUserName')]"
+          },
+          "labUserPassword": {
+            "value": "[parameters('labUserPassword')]"
+          },
+          "cloudSuffix": {
+            "value": "[parameters('cloudSuffix')]"
+          },
+          "intuneCredentialType": {
+            "value": "[parameters('intuneCredentialType')]"
+          },
+          "mdeOnboardingBlob": {
+            "value": "[parameters('mdeOnboardingBlob')]"
+          },
+          "deployHydration": {
+            "value": "[parameters('deployHydration')]"
+          },
+          "hydrationIntervalMinutes": {
+            "value": "[parameters('hydrationIntervalMinutes')]"
+          },
+          "autoShutdownTime": {
+            "value": "[parameters('autoShutdownTime')]"
+          },
+          "autoShutdownTimeZone": {
+            "value": "[parameters('autoShutdownTimeZone')]"
+          },
+          "deployLinuxVms": {
+            "value": "[parameters('deployLinuxVms')]"
+          }
+        }
+      }
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[variables('cspmCoverageDeploymentName')]",
+      "resourceGroup": "[variables('tier3ResourceGroupName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]",
+        "[resourceId('Microsoft.Security/pricings', 'Api')]"
+      ],
+      "properties": {
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[uri(deployment().properties.templateLink.uri, 'templates/cspm-coverage.json')]"
+        },
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "namePrefix": {
+            "value": "[parameters('prefix')]"
+          },
+          "sqlAdminUsername": {
+            "value": "[parameters('adminUsername')]"
+          },
+          "sqlAdminPassword": {
+            "value": "[parameters('adminPassword')]"
+          },
+          "customStorageAccountName": {
+            "value": "[parameters('cspmStorageAccountName')]"
+          },
+          "customAcrName": {
+            "value": "[parameters('cspmAcrName')]"
+          },
+          "customSqlServerName": {
+            "value": "[parameters('cspmSqlServerName')]"
+          },
+          "customSqlDatabaseName": {
+            "value": "[parameters('cspmSqlDatabaseName')]"
+          },
+          "customBlobContainerName": {
+            "value": "[parameters('cspmBlobContainerName')]"
+          },
+          "deployKeyVault": {
+            "value": "[parameters('deployCspmKeyVault')]"
+          },
+          "deploySql": {
+            "value": "[parameters('deployCspmSql')]"
+          },
+          "deployAppService": {
+            "value": "[parameters('deployCspmAppService')]"
+          },
+          "deployApiManagement": {
+            "value": "[parameters('deployCspmApiManagement')]"
+          },
+          "apimSku": {
+            "value": "[parameters('cspmApimSku')]"
+          },
+          "apimPublisherEmail": {
+            "value": "[parameters('emailSecurityContact')]"
+          },
+          "apimPublisherName": {
+            "value": "[format('{0} security lab', parameters('prefix'))]"
+          },
+          "onboardApiToDefender": {
+            "value": "[and(parameters('deployDefender'), parameters('deployDefenderForApis'))]"
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderCspm')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "CloudPosture",
+      "properties": {
+        "pricingTier": "Standard"
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderForServers')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "VirtualMachines",
+      "properties": {
+        "pricingTier": "Standard",
+        "subPlan": "[parameters('defenderForServersSubPlan')]"
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderForStorage')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "StorageAccounts",
+      "properties": {
+        "pricingTier": "Standard"
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderForSql')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "SqlServerVirtualMachines",
+      "properties": {
+        "pricingTier": "Standard"
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderForContainers')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "Containers",
+      "properties": {
+        "pricingTier": "Standard"
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderForAppService')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "AppServices",
+      "properties": {
+        "pricingTier": "Standard"
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderForKeyVault')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "KeyVaults",
+      "properties": {
+        "pricingTier": "Standard"
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderForArm')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "Arm",
+      "properties": {
+        "pricingTier": "Standard"
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderForOssDb')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "OpenSourceRelationalDatabases",
+      "properties": {
+        "pricingTier": "Standard"
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderForCosmosDb')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "CosmosDbs",
+      "properties": {
+        "pricingTier": "Standard"
+      }
+    },
+    {
+      "condition": "[parameters('deployDefenderForApis')]",
+      "type": "Microsoft.Security/pricings",
+      "apiVersion": "2024-01-01",
+      "name": "Api",
+      "properties": {
+        "pricingTier": "Standard",
+        "subPlan": "[parameters('defenderForApisSubPlan')]"
+      }
+    },
+    {
+      "condition": "[parameters('deployNist80053')]",
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2022-06-01",
+      "name": "assign-nist-800-53",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "displayName": "NIST SP 800-53 Rev. 5",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policySetDefinitions/179d1daa-458f-4e47-8086-2a68d0d6c38f",
+        "enforcementMode": "DoNotEnforce"
+      }
+    },
+    {
+      "condition": "[parameters('deployNist800171')]",
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2022-06-01",
+      "name": "assign-nist-800-171",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "displayName": "NIST SP 800-171 Rev. 2",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policySetDefinitions/03055927-78bd-4236-86c0-f36125a10dc9",
+        "enforcementMode": "DoNotEnforce",
+        "parameters": {
+          "membersToExcludeInLocalAdministratorsGroup": {
+            "value": ""
+          },
+          "membersToIncludeInLocalAdministratorsGroup": {
+            "value": ""
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('deployMcsb')]",
+      "type": "Microsoft.Authorization/policyAssignments",
+      "apiVersion": "2022-06-01",
+      "name": "assign-mcsb",
+      "location": "[parameters('location')]",
+      "identity": {
+        "type": "SystemAssigned"
+      },
+      "properties": {
+        "displayName": "Microsoft cloud security benchmark",
+        "policyDefinitionId": "/providers/Microsoft.Authorization/policySetDefinitions/1f3afdf9-d0c9-4c3d-847f-89da613e70a8",
+        "enforcementMode": "DoNotEnforce"
+      }
+    },
+    {
+      "condition": "[parameters('deploySentinel')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[variables('securityLabDeploymentName')]",
+      "resourceGroup": "[variables('tier3ResourceGroupName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]",
+        "[variables('labVmDeploymentName')]"
+      ],
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[uri(deployment().properties.templateLink.uri, 'templates/security-lab.json')]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "prefix": {
+            "value": "[parameters('prefix')]"
+          },
+          "workspaceName": {
+            "value": "[variables('labWorkspaceName')]"
+          },
+          "createWorkspace": {
+            "value": "[empty(parameters('existingWorkspaceResourceId'))]"
+          },
+          "retentionInDays": {
+            "value": 90
+          },
+          "usePrivateIngestion": {
+            "value": "[parameters('usePrivateIngestion')]"
+          },
+          "deploySentinelContentScript": {
+            "value": "[and(parameters('deploySentinelContentScript'), parameters('enableSentinelAnalytics'))]"
+          },
+          "deployUeba": {
+            "value": "[parameters('enableSentinelAnalytics')]"
+          },
+          "enableXdrConnector": {
+            "value": "[parameters('enableXdrConnector')]"
+          },
+          "subscriptionId": {
+            "value": "[subscription().subscriptionId]"
+          },
+          "resourceGroupName": {
+            "value": "[variables('tier3ResourceGroupName')]"
+          },
+          "deployLinuxVms": {
+            "value": "[parameters('deployLinuxVms')]"
+          }
+        }
+      }
+    },
+    {
+      "condition": "[parameters('deployArcPrivateLink')]",
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2025-04-01",
+      "name": "[variables('arcDeploymentName')]",
+      "resourceGroup": "[variables('tier3ResourceGroupName')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName'))]",
+        "[variables('labVmDeploymentName')]"
+      ],
+      "properties": {
+        "expressionEvaluationOptions": {
+          "scope": "inner"
+        },
+        "mode": "Incremental",
+        "templateLink": {
+          "uri": "[uri(deployment().properties.templateLink.uri, 'templates/arc-private-link.json')]",
+          "contentVersion": "1.0.0.0"
+        },
+        "parameters": {
+          "location": {
+            "value": "[parameters('location')]"
+          },
+          "prefix": {
+            "value": "[parameters('prefix')]"
+          },
+          "privateEndpointSubnetResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName')), '2025-04-01').outputs.tier.value.subnetResourceId]"
+          },
+          "workloadVirtualNetworkResourceId": {
+            "value": "[split(reference(resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName')), '2025-04-01').outputs.tier.value.subnetResourceId, '/subnets/')[0]]"
+          },
+          "hubVirtualNetworkResourceId": {
+            "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('coreDeploymentName')), '2025-04-01').outputs.hubVirtualNetworkResourceId.value]"
+          },
+          "deployPrivateDnsResolver": {
+            "value": "[parameters('deployPrivateDnsResolver')]"
+          },
+          "resolverSubnetResourceId": {
+            "value": "[if(parameters('deployPrivateDnsResolver'), format('{0}/subnets/snet-dnspr', split(reference(resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName')), '2025-04-01').outputs.tier.value.subnetResourceId, '/subnets/')[0]), '')]"
+          }
+        }
+      }
+    },
+    {
+      "condition": "[and(parameters('autoCreateEntraGroup'), equals(environment().name, 'AzureCloud'))]",
+      "type": "Microsoft.Graph/groups",
+      "apiVersion": "2023-07-01-preview",
+      "name": "[variables('entraGroupUniqueName')]",
+      "displayName": "[variables('entraGroupUniqueName')]",
+      "mailEnabled": false,
+      "mailNickname": "[variables('entraGroupUniqueName')]",
+      "securityEnabled": true
+    }
+  ],
+  "outputs": {
+    "coreDeploymentName": {
+      "type": "string",
+      "value": "[variables('coreDeploymentName')]"
+    },
+    "tier3ResourceGroupName": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName')), '2025-04-01').outputs.tier.value.resourceGroupName]"
+    },
+    "tier3SubnetResourceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('tier3DeploymentName')), '2025-04-01').outputs.tier.value.subnetResourceId]"
+    },
+    "hubVirtualNetworkResourceId": {
+      "type": "string",
+      "value": "[reference(resourceId('Microsoft.Resources/deployments', variables('coreDeploymentName')), '2025-04-01').outputs.hubVirtualNetworkResourceId.value]"
+    }
+  }
+}

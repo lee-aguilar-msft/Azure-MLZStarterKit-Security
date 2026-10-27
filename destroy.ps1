@@ -1,0 +1,323 @@
+<#
+.SYNOPSIS
+    Destroys all resources created by the MLZ AD + Entra Starter Kit deployment.
+
+.DESCRIPTION
+    Discovers and removes all resource groups whose names start with the MLZ
+    naming prefix, subscription-level Defender plans, policy assignments, and
+    optionally the Entra security group. Uses dynamic discovery so it works
+    regardless of exact MLZ RG naming internals.
+
+.PARAMETER SubscriptionId
+    The Azure subscription ID where the deployment was made.
+
+.PARAMETER Identifier
+    The MLZ identifier used during deployment (max 3 chars, e.g. "mlz").
+
+.PARAMETER EnvironmentAbbreviation
+    The environment abbreviation used during deployment (e.g. "dev", "test", "prod").
+
+.PARAMETER Location
+    The Azure region used during deployment (e.g. "eastus", "usgovvirginia").
+
+.PARAMETER EntraGroupName
+    Optional. The Entra security group name to delete.
+
+.PARAMETER RemoveDefenderPlans
+    Switch. Resets all Defender for Cloud plans to Free tier.
+
+.PARAMETER RemovePolicyAssignments
+    Switch. Removes NIST/IL5 policy assignments created by the deployment.
+
+.PARAMETER Force
+    Switch. Skips confirmation prompts.
+
+.EXAMPLE
+    # Preview what will be deleted (no -Force, answers 'no' to confirm)
+    .\destroy.ps1 -SubscriptionId "xxxx" -Identifier "mlz" -EnvironmentAbbreviation "dev" -Location "eastus"
+
+.EXAMPLE
+    # Full teardown
+    .\destroy.ps1 -SubscriptionId "xxxx" -Identifier "mlz" -EnvironmentAbbreviation "dev" `
+        -Location "eastus" -EntraGroupName "mlz-lab-vm-users" `
+        -RemoveDefenderPlans -RemovePolicyAssignments -Force
+#>
+
+[CmdletBinding(SupportsShouldProcess)]
+param(
+    [Parameter(Mandatory)]
+    [string]$SubscriptionId,
+
+    [Parameter(Mandatory)]
+    [string]$Identifier,
+
+    [Parameter(Mandatory)]
+    [string]$EnvironmentAbbreviation,
+
+    [Parameter(Mandatory)]
+    [string]$Location,
+
+    [string]$EntraGroupName = "",
+
+    [switch]$RemoveDefenderPlans,
+
+    [switch]$RemovePolicyAssignments,
+
+    [switch]$Force
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+# ---------------------------------------------------------------------------
+# Location abbreviation map — must match solution.json exactly
+# ---------------------------------------------------------------------------
+$locationAbbreviations = @{
+    "australiacentral"   = "auc";  "australiacentral2"  = "auc2"; "australiaeast"      = "aue"
+    "australiasoutheast" = "ause"; "brazilsouth"        = "brs";  "brazilsoutheast"    = "brse"
+    "canadacentral"      = "cac";  "canadaeast"         = "cae";  "centralindia"       = "inc"
+    "centralus"          = "usc";  "eastasia"           = "ase";  "eastus"             = "use"
+    "eastus2"            = "use2"; "francecentral"      = "frc";  "francesouth"        = "frs"
+    "germanynorth"       = "den";  "germanywestcentral" = "dewc"; "israelcentral"      = "ilc"
+    "italynorth"         = "itn";  "japaneast"          = "jpe";  "japanwest"          = "jpw"
+    "jioindiacentral"    = "injc"; "jioindiawest"       = "injw"; "koreacentral"       = "krc"
+    "koreasouth"         = "krs";  "northcentralus"     = "usnc"; "northeurope"        = "eun"
+    "norwayeast"         = "noe";  "norwaywest"         = "now";  "polandcentral"      = "plc"
+    "qatarcentral"       = "qac";  "southafricanorth"   = "zan";  "southafricawest"    = "zaw"
+    "southcentralus"     = "ussc"; "southeastasia"      = "asse"; "southindia"         = "ins"
+    "swedencentral"      = "sec";  "switzerlandnorth"   = "chn";  "switzerlandwest"    = "chw"
+    "uaecentral"         = "aec";  "uaenorth"           = "aen";  "uksouth"            = "uks"
+    "ukwest"             = "ukw";  "westcentralus"      = "uswc"; "westeurope"         = "euw"
+    "westindia"          = "inw";  "westus"             = "usw";  "westus2"            = "usw2"
+    "westus3"            = "usw3"; "chinaeast"          = "cne";  "chinaeast2"         = "cne2"
+    "chinanorth"         = "cnn";  "chinanorth2"        = "cnn2"; "usdodcentral"       = "dodc"
+    "usdodeast"          = "dode"; "usgovarizona"       = "az";   "usgovtexas"         = "tx"
+    "usgovvirginia"      = "va"
+}
+
+if (-not $locationAbbreviations.ContainsKey($Location.ToLower())) {
+    Write-Error "Unknown location '$Location'. Add it to the locationAbbreviations map in destroy.ps1."
+    exit 1
+}
+
+$locAbbr  = $locationAbbreviations[$Location.ToLower()]
+$idLower  = $Identifier.ToLower()
+# All MLZ RGs start with this prefix: e.g. "mlz-dev-use-"
+$rgPrefix = "$idLower-$EnvironmentAbbreviation-$locAbbr-"
+
+# ---------------------------------------------------------------------------
+# Defender plans that may have been enabled
+# ---------------------------------------------------------------------------
+$defenderPlans = @(
+    "CloudPosture", "VirtualMachines", "StorageAccounts", "SqlServerVirtualMachines",
+    "Containers", "AppServices", "KeyVaults", "Arm",
+    "OpenSourceRelationalDatabases", "CosmosDbs", "Api"
+)
+
+# ---------------------------------------------------------------------------
+# Policy assignments created by this deployment
+# ---------------------------------------------------------------------------
+$policyAssignments = @(
+    "assign-nist-800-53",
+    "assign-nist-800-171",
+    "assign-mcsb",
+    "assign-dod-il5"   # legacy name from kits built before the DoD IL5 initiative was retired
+)
+
+# ---------------------------------------------------------------------------
+# Set subscription context
+# ---------------------------------------------------------------------------
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host " MLZ Starter Kit - Destroy Script" -ForegroundColor Cyan
+Write-Host "========================================" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "Subscription : $SubscriptionId"
+Write-Host "Identifier   : $Identifier"
+Write-Host "Environment  : $EnvironmentAbbreviation"
+Write-Host "Location     : $Location ($locAbbr)"
+Write-Host "RG prefix    : $rgPrefix"
+Write-Host ""
+
+Write-Host "Setting subscription context..." -ForegroundColor Cyan
+az account set --subscription $SubscriptionId
+if ($LASTEXITCODE -ne 0) { Write-Error "Failed to set subscription context."; exit 1 }
+
+# ---------------------------------------------------------------------------
+# Discover all matching resource groups dynamically
+# ---------------------------------------------------------------------------
+Write-Host "Discovering resource groups with prefix '$rgPrefix'..." -ForegroundColor Cyan
+$discoveredRgsJson = az group list --query "[?starts_with(name,'$rgPrefix')].name" -o json 2>$null
+$discoveredRgs = @($discoveredRgsJson | ConvertFrom-Json)  # @() forces array even when result is null/single item
+
+if ($discoveredRgs.Count -eq 0) {
+    Write-Host "  No resource groups found matching prefix '$rgPrefix'." -ForegroundColor Yellow
+    Write-Host "  Nothing to delete. Verify your Identifier/EnvironmentAbbreviation/Location inputs." -ForegroundColor Yellow
+} else {
+    Write-Host ""
+    Write-Host "Found $($discoveredRgs.Count) resource group(s) to delete:" -ForegroundColor Yellow
+    $discoveredRgs | ForEach-Object { Write-Host "  - $_" -ForegroundColor White }
+}
+
+if ($RemoveDefenderPlans)     { Write-Host "  + Defender for Cloud plans will be reset to Free" -ForegroundColor Yellow }
+if ($RemovePolicyAssignments) { Write-Host "  + Policy assignments will be removed" -ForegroundColor Yellow }
+if ($EntraGroupName)          { Write-Host "  + Entra group '$EntraGroupName' will be deleted" -ForegroundColor Yellow }
+Write-Host ""
+
+if (-not $Force) {
+    $confirm = Read-Host "Type 'yes' to proceed with destruction"
+    if ($confirm -ne "yes") {
+        Write-Host "Aborted." -ForegroundColor Red
+        exit 0
+    }
+}
+
+# ---------------------------------------------------------------------------
+# 0. Hard-delete soft-delete-capable resources so a redeploy with the same
+#    names is clean: Log Analytics workspaces (otherwise soft-deleted for 14
+#    days and silently *recovered* by the next deployment, Sentinel state and
+#    all) and Key Vaults (otherwise a name collision on redeploy).
+# ---------------------------------------------------------------------------
+$vaultsToPurge = @()
+if ($discoveredRgs.Count -gt 0) {
+    Write-Host "`n[0/4] Force-deleting Log Analytics workspaces and collecting Key Vaults..." -ForegroundColor Cyan
+    foreach ($rg in $discoveredRgs) {
+        $laws = @(az monitor log-analytics workspace list -g $rg --query "[].name" -o tsv 2>$null)
+        foreach ($law in $laws) {
+            if ($law) {
+                # Offboard Microsoft Sentinel first. Deleting a Sentinel workspace without offboarding leaves the
+                # Sentinel back end mapped to the old workspace id; a redeploy with the same name then rejects every
+                # analytics rule with "Log Analytics workspace '<old id>' could not be found".
+                $wsId = "/subscriptions/$SubscriptionId/resourceGroups/$rg/providers/Microsoft.OperationalInsights/workspaces/$law"
+                $onb = az rest --method get --url "$wsId/providers/Microsoft.SecurityInsights/onboardingStates/default?api-version=2024-03-01" 2>$null
+                if ($LASTEXITCODE -eq 0 -and $onb) {
+                    Write-Host "  Offboarding Microsoft Sentinel from $law" -ForegroundColor Yellow
+                    az rest --method delete --url "$wsId/providers/Microsoft.SecurityInsights/onboardingStates/default?api-version=2024-03-01" -o none 2>$null
+                }
+                Write-Host "  Permanently deleting workspace $law ($rg)" -ForegroundColor Yellow
+                az monitor log-analytics workspace delete -g $rg -n $law --force true --yes 2>$null | Out-Null
+            }
+        }
+        $kvs = @(az keyvault list -g $rg --query "[].name" -o tsv 2>$null)
+        foreach ($kv in $kvs) { if ($kv) { $vaultsToPurge += $kv } }
+    }
+}
+
+# ---------------------------------------------------------------------------
+# 1. Delete resource groups in parallel
+# ---------------------------------------------------------------------------
+Write-Host "`n[1/4] Deleting resource groups..." -ForegroundColor Cyan
+
+$jobs = @()
+foreach ($rg in $discoveredRgs) {
+    Write-Host "  Queuing deletion: $rg" -ForegroundColor Yellow
+    $jobs += Start-Job -ScriptBlock {
+        param($rgName, $sub)
+        az group delete --name $rgName --subscription $sub --yes 2>&1
+    } -ArgumentList $rg, $SubscriptionId
+}
+
+if ($jobs.Count -gt 0) {
+    Write-Host "  Waiting for all deletions to complete (can take 15-30 minutes)..." -ForegroundColor Yellow
+    $jobs | Wait-Job | Receive-Job
+    $jobs | Remove-Job
+    Write-Host "  All resource group deletions completed." -ForegroundColor Green
+} else {
+    Write-Host "  No resource groups to delete." -ForegroundColor Gray
+}
+
+# MLZ enables NSG flow logs on every VNet; those live in NetworkWatcherRG (outside the naming prefix)
+# and would otherwise be left behind pointing at a deleted storage account.
+Write-Host "`n[1b/4] Removing NSG flow logs created for this deployment (NetworkWatcherRG)..." -ForegroundColor Cyan
+# (az network watcher flow-log list returns nothing in some clouds, so go through the generic resource API)
+$flowLogs = @(az resource list --resource-type "Microsoft.Network/networkWatchers/flowLogs" --query "[?contains(name,'$rgPrefix')].id" -o tsv 2>$null)
+foreach ($fl in $flowLogs) {
+    if ($fl) {
+        Write-Host "  Deleting flow log $($fl.Split('/')[-1])" -ForegroundColor Yellow
+        az resource delete --ids $fl 2>$null | Out-Null
+    }
+}
+if ($flowLogs.Count -eq 0) { Write-Host "  None found." -ForegroundColor Gray }
+
+# Safety net: a workspace can still land in the soft-deleted state (the first real teardown showed this even
+# after --force). Recover it into a throw-away RG, force-delete it, drop the RG — so the next deployment
+# creates a brand-new workspace instead of silently recovering the old one.
+$ghosts = @(az monitor log-analytics workspace list-deleted-workspaces --query "[?starts_with(name,'$rgPrefix')].{n:name,rg:resourceGroup}" -o json 2>$null | ConvertFrom-Json)
+foreach ($g in $ghosts) {
+    if ($g -and $g.n) {
+        Write-Host "  Purging soft-deleted workspace $($g.n) (recover -> force delete)" -ForegroundColor Yellow
+        az group create -n $g.rg -l $Location -o none 2>$null
+        az monitor log-analytics workspace recover -g $g.rg -n $g.n -o none 2>$null
+        az monitor log-analytics workspace delete -g $g.rg -n $g.n --force true --yes 2>$null | Out-Null
+        az group delete -n $g.rg --yes 2>$null | Out-Null
+    }
+}
+
+# Purge the soft-deleted Key Vaults now that their resource groups are gone
+foreach ($kv in $vaultsToPurge) {
+    Write-Host "  Purging soft-deleted Key Vault $kv" -ForegroundColor Yellow
+    az keyvault purge --name $kv --location $Location 2>$null | Out-Null
+}
+
+# ---------------------------------------------------------------------------
+# 2. Reset Defender for Cloud plans to Free
+# ---------------------------------------------------------------------------
+if ($RemoveDefenderPlans) {
+    Write-Host "`n[2/4] Resetting Defender for Cloud plans to Free..." -ForegroundColor Cyan
+    foreach ($plan in $defenderPlans) {
+        az security pricing create --name $plan --tier Free 2>$null
+        if ($LASTEXITCODE -eq 0) {
+            Write-Host "  Reset: $plan" -ForegroundColor Green
+        } else {
+            Write-Host "  Skipped (not enabled or no permission): $plan" -ForegroundColor Gray
+        }
+    }
+} else {
+    Write-Host "`n[2/4] Skipping Defender plan reset (use -RemoveDefenderPlans to enable)" -ForegroundColor Gray
+}
+
+# ---------------------------------------------------------------------------
+# 3. Remove policy assignments
+# ---------------------------------------------------------------------------
+if ($RemovePolicyAssignments) {
+    Write-Host "`n[3/4] Removing policy assignments..." -ForegroundColor Cyan
+    foreach ($pa in $policyAssignments) {
+        $exists = az policy assignment show --name $pa --query "name" -o tsv 2>$null
+        if ($exists) {
+            az policy assignment delete --name $pa
+            Write-Host "  Removed: $pa" -ForegroundColor Green
+        } else {
+            Write-Host "  Not found (skipping): $pa" -ForegroundColor Gray
+        }
+    }
+} else {
+    Write-Host "`n[3/4] Skipping policy assignment removal (use -RemovePolicyAssignments to enable)" -ForegroundColor Gray
+}
+
+# ---------------------------------------------------------------------------
+# 4. Delete Entra security group
+# ---------------------------------------------------------------------------
+if ($EntraGroupName) {
+    Write-Host "`n[4/4] Removing Entra security group '$EntraGroupName'..." -ForegroundColor Cyan
+    $groupId = az ad group show --group $EntraGroupName --query "id" -o tsv 2>$null
+    if ($groupId) {
+        az ad group delete --group $groupId
+        Write-Host "  Deleted: $EntraGroupName" -ForegroundColor Green
+    } else {
+        Write-Host "  Not found (skipping): $EntraGroupName" -ForegroundColor Gray
+    }
+} else {
+    Write-Host "`n[4/4] Skipping Entra group removal (use -EntraGroupName to enable)" -ForegroundColor Gray
+}
+
+# ---------------------------------------------------------------------------
+# Done — verify
+# ---------------------------------------------------------------------------
+Write-Host ""
+Write-Host "========================================" -ForegroundColor Green
+Write-Host " Destroy complete." -ForegroundColor Green
+Write-Host "========================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "Verify remaining resources:" -ForegroundColor Yellow
+Write-Host "  az group list --query `"[?starts_with(name,'$rgPrefix')]`" -o table" -ForegroundColor White
+Write-Host ""

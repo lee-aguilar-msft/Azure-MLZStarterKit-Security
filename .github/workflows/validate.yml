@@ -1,0 +1,77 @@
+name: Validate templates and scripts
+
+# Runs on every push and pull request. No cloud credentials needed — this is the offline gate:
+#   1. JSON parse of every template/params file
+#   2. build/validate.py (parameter/variable references, bracket balance, nested-deployment wiring)
+#   3. PowerShell parser over every .ps1 (the scripts are embedded in the ARM templates, so a parse
+#      error here would break the deployment)
+#   4. bash -n over every .sh
+#   5. ARM Template Toolkit (arm-ttk) best-practice tests on the kit-authored templates (advisory)
+#   6. Generators are re-run and the output diffed against the commit, so templates/*.json can never
+#      drift from templates/scripts/* or build/*.py
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: JSON parse
+        shell: bash
+        run: |
+          set -e
+          for f in solution.json uiDefinition.json solution.parameters.json templates/*.json params/*.json; do
+            python3 -c "import json,sys; json.load(open('$f'))" && echo "OK  $f"
+          done
+
+      - name: Offline ARM validator
+        run: python3 build/validate.py
+
+      - name: Generators are in sync with committed templates
+        shell: bash
+        run: |
+          set -e
+          python3 build/gen_ad_entra_vms.py
+          python3 build/gen_security_lab.py
+          python3 build/gen_solution.py
+          python3 build/gen_firewall_rules.py
+          git diff --exit-code -- templates/ad-entra-vms.json templates/security-lab.json solution.json templates/firewall-lab-rules.json \
+            || { echo "::error::templates/*.json is out of date — run the build/*.py generators and commit"; exit 1; }
+
+      - name: PowerShell parse
+        shell: pwsh
+        run: |
+          $bad = 0
+          Get-ChildItem -Recurse -Include *.ps1 | ForEach-Object {
+            $t = $null; $e = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$t, [ref]$e) | Out-Null
+            if ($e.Count) { $bad++; Write-Host "::error file=$($_.FullName)::$($e[0].Message)" } else { Write-Host "OK  $($_.FullName)" }
+          }
+          if ($bad) { exit 1 }
+
+      - name: Bash syntax
+        shell: bash
+        run: |
+          set -e
+          for s in templates/scripts/*.sh; do bash -n "$s" && echo "OK  $s"; done
+
+      - name: ARM Template Toolkit (advisory)
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          git clone --depth 1 https://github.com/Azure/arm-ttk.git /tmp/arm-ttk
+          Import-Module /tmp/arm-ttk/arm-ttk/arm-ttk.psd1
+          $results = @()
+          foreach ($f in 'solution.json','templates/ad-entra-vms.json','templates/security-lab.json','templates/arc-private-link.json') {
+            $results += Test-AzTemplate -TemplatePath $f -Skip 'DeploymentTemplate-Must-Not-Contain-Hardcoded-Uri','URIs-Should-Be-Properly-Constructed'
+          }
+          $results | Where-Object { -not $_.Passed } | ForEach-Object { Write-Host "::warning file=$($_.File.Name)::$($_.Name): $($_.Errors.Exception.Message -join '; ')" }
+          Write-Host ("arm-ttk: {0} passed / {1} failed (advisory)" -f ($results | ? Passed).Count, ($results | ? { -not $_.Passed }).Count)
