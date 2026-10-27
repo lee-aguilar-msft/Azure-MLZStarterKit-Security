@@ -1019,7 +1019,7 @@
               "type": "Microsoft.Common.TextBlock",
               "visible": true,
               "options": {
-                "text": "Linux servers (RHEL 9, Ubuntu 22.04, SLES 15 SP5) are deployed when \"Deploy 3 Linux servers\" is enabled on the Lab Options tab. Their images are fixed; choose their size here."
+                "text": "Linux servers (RHEL 9, Ubuntu 22.04, SLES 15 SP6) are deployed when \"Deploy 3 Linux servers\" is enabled on the Lab Options tab. Their images are fixed; choose their size here."
               }
             },
             {

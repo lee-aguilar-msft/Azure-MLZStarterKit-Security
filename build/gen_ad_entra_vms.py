@@ -109,7 +109,7 @@ tmpl = {
         "linuxVms": [
             {"name": "[format('{0}-rhel01', parameters('prefix'))]", "image": {"publisher": "RedHat", "offer": "RHEL", "sku": "9-lvm-gen2", "version": "latest"}},
             {"name": "[format('{0}-ubu01', parameters('prefix'))]", "image": {"publisher": "Canonical", "offer": "0001-com-ubuntu-server-jammy", "sku": "22_04-lts-gen2", "version": "latest"}},
-            {"name": "[format('{0}-sles01', parameters('prefix'))]", "image": {"publisher": "SUSE", "offer": "sles-15-sp5", "sku": "gen2", "version": "latest"}},
+            {"name": "[format('{0}-sles01', parameters('prefix'))]", "image": {"publisher": "SUSE", "offer": "sles-15-sp6", "sku": "gen2", "version": "latest"}},
         ],
         "memberWinCount": 5,
         # Computer names (15-char NetBIOS) the baseline places into OUs and the verify step checks.
@@ -165,6 +165,7 @@ R.append({
         },
         "networkProfile": {"networkInterfaces": [{"id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', variables('windowsVms')[copyIndex()].name))]", "properties": {"primary": True}}]},
         "securityProfile": {"securityType": "TrustedLaunch", "uefiSettings": {"secureBootEnabled": True, "vTpmEnabled": True}},
+        "diagnosticsProfile": {"bootDiagnostics": {"enabled": True}},
     },
 })
 
@@ -396,6 +397,7 @@ R.append({
         },
         "networkProfile": {"networkInterfaces": [{"id": "[resourceId('Microsoft.Network/networkInterfaces', format('{0}-nic', variables('linuxVms')[copyIndex()].name))]", "properties": {"primary": True}}]},
         "securityProfile": {"securityType": "TrustedLaunch", "uefiSettings": {"secureBootEnabled": True, "vTpmEnabled": True}},
+        "diagnosticsProfile": {"bootDiagnostics": {"enabled": True}},
     },
 })
 # SLES/RHEL/Ubuntu images that are marketplace "plan" images need a plan block; add it conditionally is
