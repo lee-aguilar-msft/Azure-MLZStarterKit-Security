@@ -153,6 +153,25 @@ az vm list-usage -l usgovvirginia --query "[?contains(name.value,'DADSv6') || na
 
 ![VM SKU availability](img/07-vm-sku-availability.jpg)
 
+**Azure Commercial — pick the region by what the subscription may deploy, not by habit.** Commercial
+subscriptions (trial, internal, sponsorship, new pay-as-you-go) commonly have *entire regions* restricted for
+VM creation: on the test subscription used for this guide East US, Central US, West US and North Central US
+offered **zero** deployable VM sizes, East US 2 only a handful, and West US 2 everything. `az vm list-skus`
+hides this (it is slow and returns `[]`); ask the SKU API directly and count the unrestricted sizes per region
+before choosing one:
+
+```bash
+SUB=$(az account show --query id -o tsv)
+for l in eastus eastus2 westus2 westus3 southcentralus; do
+  az rest --method get --url "https://management.azure.com/subscriptions/$SUB/providers/Microsoft.Compute/skus?api-version=2021-07-01&\$filter=location%20eq%20%27$l%27" -o json > /tmp/s-$l.json
+  python3 -c "import json,sys;d=json.load(open('/tmp/s-'+sys.argv[1]+'.json'))['value'];vm=[s for s in d if s['resourceType']=='virtualMachines'];ok=[s['name'] for s in vm if not s.get('restrictions')];print(sys.argv[1],len(ok),'deployable sizes;','D2ads_v6' if 'Standard_D2ads_v6' in ok else '-')" $l
+done
+```
+
+Deploy into a region that lists the size you want. The Compute tab's size pickers on Commercial use the portal's
+live size selector, so a size the subscription cannot deploy in the chosen region is simply not offered
+(troubleshooting #51).
+
 ---
 
 ## 3. Entra ID prerequisites
@@ -751,6 +770,9 @@ All fixes below are on `main`; they are listed so you recognise them if you fork
 | 46 | Data hydration (run 4) | The 6.5 query shows group churn and Windows activity but never *failed sign-in lab.churn* | `Invoke-LabHydration.ps1` tried the bad password through a WMI call with explicit credentials against the local machine; Windows rejects credentials on local WMI connections before any sign-in is attempted, so no 4625/4771 was ever logged | Fixed: the script now calls `PrincipalContext.ValidateCredentials` twice with a wrong password, which produces real failed sign-ins on the DC. Existing lab: copy the updated script over `C:\LabTools\Invoke-LabHydration.ps1` on the DC (the `LAB-Hydration` task picks it up at the next run) |
 | 47 | Data hydration (run 4) | No *Linux lab-hydrate* rows; on the Linux VMs `/usr/local/bin/lab-hydrate.sh` and the `lab-hydrate` timer do not exist although `/var/log/lab-configure.log` ends with `CONFIGURE-STATUS: Success` | The template hands the hydration script to `configure-linux.sh` as a Run Command parameter (`arg2`); it never arrived as the positional `$2` the script read (the Linux Run Command handler passes named parameters as environment variables), so the script saw no hydration payload and skipped that part (the cloud suffix in `arg1` fell back to its `us` default, which hid the problem in Azure Government) | Fixed: `configure-linux.sh` accepts the parameters either way and logs what it received. Existing lab: re-run the `configure-linux` run command, or redeploy the VM module |
 | 48 | MLZ core, Azure Commercial | *Subscription … is not registered for feature Microsoft.Network/AllowBringYourOwnPublicIpAddress required to carry out the requested operation* on a firewall or Bastion public IP | The MLZ public IPs are plain Standard IPs; the requirement comes from the subscription (Microsoft-internal subscriptions, or a policy that adds IP tags to public IPs) | Register the feature (section 2.3), wait for `Registered`, `az provider register -n Microsoft.Network`, then tear down and redeploy. If it stays `Pending`, the subscription needs approval through a support request (days) — use another subscription meanwhile |
+| 49 | Deployment, Azure Commercial | Four of the eleven `Microsoft.Security/pricings` resources end in `Conflict` — *Another update operation is in progress. Please retry in a few minutes* | Commercial's Defender pricing API serialises plan changes per subscription; the template created all plans in parallel (Gov tolerated it) | `build/gen_solution.py` chains the plans with `dependsOn` so ARM creates them one at a time (a dependency on a toggled-off plan is still satisfied) |
+| 50 | MLZ core, Azure Commercial | Azure Firewall Premium ends in provisioning state **Failed** with `InternalServerError: An error occurred.`; the rule collection group then fails with *Put on Firewall Policy … Failed with 1 faulted referenced firewalls* and the whole core deployment fails | Platform-side fault while the firewall was being built (nothing in the template; East US, Premium tier) | Tear down (`destroy.ps1`) and redeploy. Do not try to repair a firewall in `Failed` state in place — **Redeploy** on the failed deployment reuses the faulted instance |
+| 51 | Compute tab / VM module, Azure Commercial | Every D-series size shows `NotAvailableForSubscription` in East US (or the deployment fails with `SkuNotAvailable`) although the quota is 100 vCPU per family | Region-level VM restrictions on the subscription (common on internal, trial and new subscriptions); the earlier hard-coded Commercial size list offered sizes regardless | Commercial size pickers replaced with `Microsoft.Compute.SizeSelector`, which lists only sizes the subscription can deploy in the selected region (D v5/v6/v7, 2-16 vCPU). Check regions with the SKU API (section 2.4) and deploy where the list is not empty — West US 2 on the test subscription |
 
 Finding blocked destinations — query the operations workspace (firewall diagnostics land in `AzureDiagnostics`):
 

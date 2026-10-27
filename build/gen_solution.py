@@ -177,5 +177,15 @@ V["securityLabDeploymentName"] = "[format('deploy-security-lab-{0}', parameters(
 V["arcDeploymentName"] = "[format('deploy-arc-pls-{0}', parameters('deploymentNameSuffix'))]"
 V["labWorkspaceName"] = "[if(not(empty(parameters('customWorkspaceName'))), parameters('customWorkspaceName'), format('{0}-law-lab', parameters('prefix')))]"
 
+# ---- Defender for Cloud plans: one at a time ----
+# Azure Commercial's Microsoft.Security/pricings API rejects concurrent updates with
+# "Another update operation is in progress. Please retry in a few minutes" (Conflict). Chain the plans so
+# ARM creates them sequentially. A dependency on a condition=false resource is satisfied, so toggled-off
+# plans do not break the chain.
+_pricings = [r for r in s["resources"] if r.get("type") == "Microsoft.Security/pricings"]
+for prev, cur in zip(_pricings, _pricings[1:]):
+    cur["dependsOn"] = [f"[resourceId('Microsoft.Security/pricings', '{prev['name']}')]"]
+_pricings[0].pop("dependsOn", None)
+
 json.dump(s, open(SOL, "w"), indent=2)
 print("stage 1 (params+vars) written:", os.path.getsize(SOL), "bytes;", len(P), "params", len(V), "vars")

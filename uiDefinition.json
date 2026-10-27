@@ -830,47 +830,55 @@
             },
             {
               "name": "serverVmSizeCom",
-              "type": "Microsoft.Common.DropDown",
+              "type": "Microsoft.Compute.SizeSelector",
               "label": "Server VM Size",
-              "toolTip": "VM size for the domain controller and member servers. Standard_D4ads_v6 is recommended and available in Azure Government regions.",
-              "defaultValue": "Standard_D4ads_v6 (4 vCPUs, 16 GiB) \u2014 recommended",
+              "toolTip": "Size for the domain controller and member servers. Only sizes this subscription can deploy in the selected region are listed (Azure Commercial subscriptions often have whole regions restricted - pick another region if the list is empty). D-series v5/v6/v7 with 2-16 vCPUs are allowed.",
+              "recommendedSizes": [
+                "Standard_D4ads_v6",
+                "Standard_D2ads_v6",
+                "Standard_D4as_v7",
+                "Standard_D4s_v5"
+              ],
               "constraints": {
-                "required": true,
-                "allowedValues": [
-                  {
-                    "label": "Standard_D2ads_v6 (2 vCPUs, 8 GiB) \u2014 small lab / dev",
-                    "value": "Standard_D2ads_v6"
-                  },
-                  {
-                    "label": "Standard_D4ads_v6 (4 vCPUs, 16 GiB) \u2014 recommended",
-                    "value": "Standard_D4ads_v6"
-                  },
-                  {
-                    "label": "Standard_D8ads_v6 (8 vCPUs, 32 GiB) \u2014 medium workload",
-                    "value": "Standard_D8ads_v6"
-                  },
-                  {
-                    "label": "Standard_D16ads_v6 (16 vCPUs, 64 GiB) \u2014 large workload",
-                    "value": "Standard_D16ads_v6"
-                  },
-                  {
-                    "label": "Standard_D4s_v5 (4 vCPUs, 16 GiB) \u2014 Azure Commercial only",
-                    "value": "Standard_D4s_v5"
-                  },
-                  {
-                    "label": "Standard_D2s_v5 (2 vCPUs, 8 GiB) \u2014 Azure Commercial only",
-                    "value": "Standard_D2s_v5"
-                  },
-                  {
-                    "label": "Standard_D2as_v7 (2 vCPUs, 8 GiB) \u2014 v7, if v6 is not offered",
-                    "value": "Standard_D2as_v7"
-                  },
-                  {
-                    "label": "Standard_D4as_v7 (4 vCPUs, 16 GiB) \u2014 v7, if v6 is not offered",
-                    "value": "Standard_D4as_v7"
-                  }
+                "allowedSizes": [
+                  "Standard_D2ads_v6",
+                  "Standard_D4ads_v6",
+                  "Standard_D8ads_v6",
+                  "Standard_D16ads_v6",
+                  "Standard_D2as_v6",
+                  "Standard_D4as_v6",
+                  "Standard_D8as_v6",
+                  "Standard_D2ds_v6",
+                  "Standard_D4ds_v6",
+                  "Standard_D8ds_v6",
+                  "Standard_D2s_v6",
+                  "Standard_D4s_v6",
+                  "Standard_D2as_v7",
+                  "Standard_D4as_v7",
+                  "Standard_D8as_v7",
+                  "Standard_D2ads_v5",
+                  "Standard_D4ads_v5",
+                  "Standard_D8ads_v5",
+                  "Standard_D2as_v5",
+                  "Standard_D4as_v5",
+                  "Standard_D8as_v5",
+                  "Standard_D2s_v5",
+                  "Standard_D4s_v5",
+                  "Standard_D8s_v5",
+                  "Standard_D2ds_v5",
+                  "Standard_D4ds_v5"
                 ]
               },
+              "options": {
+                "hideDiskTypeFilter": false
+              },
+              "osPlatform": "Windows",
+              "imageReference": {
+                "publisher": "MicrosoftWindowsServer",
+                "offer": "WindowsServer",
+                "sku": "[steps('remoteAccess').serverImageSku]"
+              },
+              "count": 3,
               "visible": "[not(or(contains(steps('basics').resourceScope.location.name, 'usgov'), contains(steps('basics').resourceScope.location.name, 'usdod')))]"
             },
             {
@@ -955,43 +963,55 @@
             },
             {
               "name": "clientVmSizeCom",
-              "type": "Microsoft.Common.DropDown",
+              "type": "Microsoft.Compute.SizeSelector",
               "label": "Client VM Size",
-              "toolTip": "VM size for the 3 Windows client workstations. Standard_D4ads_v6 is recommended and available in Azure Government regions.",
-              "defaultValue": "Standard_D4ads_v6 (4 vCPUs, 16 GiB) \u2014 recommended",
+              "toolTip": "Size for the 3 Windows client workstations. Only sizes this subscription can deploy in the selected region are listed.",
+              "recommendedSizes": [
+                "Standard_D4ads_v6",
+                "Standard_D2ads_v6",
+                "Standard_D4as_v7",
+                "Standard_D4s_v5"
+              ],
               "constraints": {
-                "required": true,
-                "allowedValues": [
-                  {
-                    "label": "Standard_D2ads_v6 (2 vCPUs, 8 GiB) \u2014 small lab / dev",
-                    "value": "Standard_D2ads_v6"
-                  },
-                  {
-                    "label": "Standard_D4ads_v6 (4 vCPUs, 16 GiB) \u2014 recommended",
-                    "value": "Standard_D4ads_v6"
-                  },
-                  {
-                    "label": "Standard_D8ads_v6 (8 vCPUs, 32 GiB) \u2014 larger workload",
-                    "value": "Standard_D8ads_v6"
-                  },
-                  {
-                    "label": "Standard_D4s_v5 (4 vCPUs, 16 GiB) \u2014 Azure Commercial only",
-                    "value": "Standard_D4s_v5"
-                  },
-                  {
-                    "label": "Standard_D2s_v5 (2 vCPUs, 8 GiB) \u2014 Azure Commercial only",
-                    "value": "Standard_D2s_v5"
-                  },
-                  {
-                    "label": "Standard_D2as_v7 (2 vCPUs, 8 GiB) \u2014 v7, if v6 is not offered",
-                    "value": "Standard_D2as_v7"
-                  },
-                  {
-                    "label": "Standard_D4as_v7 (4 vCPUs, 16 GiB) \u2014 v7, if v6 is not offered",
-                    "value": "Standard_D4as_v7"
-                  }
+                "allowedSizes": [
+                  "Standard_D2ads_v6",
+                  "Standard_D4ads_v6",
+                  "Standard_D8ads_v6",
+                  "Standard_D16ads_v6",
+                  "Standard_D2as_v6",
+                  "Standard_D4as_v6",
+                  "Standard_D8as_v6",
+                  "Standard_D2ds_v6",
+                  "Standard_D4ds_v6",
+                  "Standard_D8ds_v6",
+                  "Standard_D2s_v6",
+                  "Standard_D4s_v6",
+                  "Standard_D2as_v7",
+                  "Standard_D4as_v7",
+                  "Standard_D8as_v7",
+                  "Standard_D2ads_v5",
+                  "Standard_D4ads_v5",
+                  "Standard_D8ads_v5",
+                  "Standard_D2as_v5",
+                  "Standard_D4as_v5",
+                  "Standard_D8as_v5",
+                  "Standard_D2s_v5",
+                  "Standard_D4s_v5",
+                  "Standard_D8s_v5",
+                  "Standard_D2ds_v5",
+                  "Standard_D4ds_v5"
                 ]
               },
+              "options": {
+                "hideDiskTypeFilter": false
+              },
+              "osPlatform": "Windows",
+              "imageReference": {
+                "publisher": "MicrosoftWindowsDesktop",
+                "offer": "[steps('remoteAccess').clientImageOffer]",
+                "sku": "[steps('remoteAccess').clientImageSku]"
+              },
+              "count": 3,
               "visible": "[not(or(contains(steps('basics').resourceScope.location.name, 'usgov'), contains(steps('basics').resourceScope.location.name, 'usdod')))]"
             },
             {
@@ -1025,31 +1045,54 @@
             },
             {
               "name": "linuxVmSizeCom",
-              "type": "Microsoft.Common.DropDown",
+              "type": "Microsoft.Compute.SizeSelector",
               "label": "Linux VM Size",
-              "defaultValue": "Standard_D2ads_v6 (2 vCPUs, 8 GiB) \u2014 recommended",
-              "toolTip": "Size for each of the three Linux servers.",
+              "toolTip": "Size for each of the three Linux servers. Only sizes this subscription can deploy in the selected region are listed.",
+              "recommendedSizes": [
+                "Standard_D2ads_v6",
+                "Standard_D2as_v7",
+                "Standard_D2s_v5"
+              ],
               "constraints": {
-                "allowedValues": [
-                  {
-                    "label": "Standard_D2ads_v6 (2 vCPUs, 8 GiB) \u2014 recommended",
-                    "value": "Standard_D2ads_v6"
-                  },
-                  {
-                    "label": "Standard_D4ads_v6 (4 vCPUs, 16 GiB)",
-                    "value": "Standard_D4ads_v6"
-                  },
-                  {
-                    "label": "Standard_D2s_v5 (2 vCPUs, 8 GiB) \u2014 Azure Commercial only",
-                    "value": "Standard_D2s_v5"
-                  },
-                  {
-                    "label": "Standard_D2as_v7 (2 vCPUs, 8 GiB) \u2014 v7, if v6 is not offered",
-                    "value": "Standard_D2as_v7"
-                  }
-                ],
-                "required": true
+                "allowedSizes": [
+                  "Standard_D2ads_v6",
+                  "Standard_D4ads_v6",
+                  "Standard_D8ads_v6",
+                  "Standard_D16ads_v6",
+                  "Standard_D2as_v6",
+                  "Standard_D4as_v6",
+                  "Standard_D8as_v6",
+                  "Standard_D2ds_v6",
+                  "Standard_D4ds_v6",
+                  "Standard_D8ds_v6",
+                  "Standard_D2s_v6",
+                  "Standard_D4s_v6",
+                  "Standard_D2as_v7",
+                  "Standard_D4as_v7",
+                  "Standard_D8as_v7",
+                  "Standard_D2ads_v5",
+                  "Standard_D4ads_v5",
+                  "Standard_D8ads_v5",
+                  "Standard_D2as_v5",
+                  "Standard_D4as_v5",
+                  "Standard_D8as_v5",
+                  "Standard_D2s_v5",
+                  "Standard_D4s_v5",
+                  "Standard_D8s_v5",
+                  "Standard_D2ds_v5",
+                  "Standard_D4ds_v5"
+                ]
               },
+              "options": {
+                "hideDiskTypeFilter": false
+              },
+              "osPlatform": "Linux",
+              "imageReference": {
+                "publisher": "Canonical",
+                "offer": "0001-com-ubuntu-server-jammy",
+                "sku": "22_04-lts-gen2"
+              },
+              "count": 3,
               "visible": "[not(or(contains(steps('basics').resourceScope.location.name, 'usgov'), contains(steps('basics').resourceScope.location.name, 'usdod')))]"
             }
           ]
