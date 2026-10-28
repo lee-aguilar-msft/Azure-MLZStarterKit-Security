@@ -137,7 +137,7 @@ has no Azure sign-in.
 > operator from an empty subscription to Sentinel connectors, analytics rules and UEBA, with screenshots
 > from a real run and a troubleshooting table of every error hit on the way:
 >
-> - [Implementation Guide — Azure Government (GCC High)](docs/IMPLEMENTATION.md) ([Word](docs/MLZ-Security-Lab-Implementation-Guide.docx))
+> - [Implementation Guide — Azure Government (GCC High)](docs/IMPLEMENTATION-GOV.md) ([Word](docs/MLZ-Security-Lab-Implementation-Guide-Gov.docx))
 > - [Implementation Guide — Azure Commercial](docs/IMPLEMENTATION-COMMERCIAL.md) ([Word](docs/MLZ-Security-Lab-Implementation-Guide-Commercial.docx))
 
 ### Option A — Portal (blue button)

@@ -4,7 +4,7 @@ Step-by-step, from an empty **Azure Commercial** subscription to a running MLZ S
 Microsoft Sentinel connectors, analytics rules and UEBA enabled — using only the Azure portal, Cloud Shell
 and the **Deploy to Azure** button in the repository README.
 
-This is the Commercial counterpart of the Azure Government guide (`IMPLEMENTATION.md`). The kit is the
+This is the Commercial counterpart of the Azure Government guide (`IMPLEMENTATION-GOV.md`). The kit is the
 same; the portal, the endpoints, the region choice, the VM sizes and several pitfalls are not, so the
 steps are written out in full here rather than as a list of differences.
 
@@ -559,7 +559,9 @@ devices until the user-credential enrollment below went through.)
 enrollment task kept failing with `0x8018002A` until the Conditional Access exclusion (5.2.2, #59) was in
 place; the next run of the task enrolled the device, Intune listed it as *Managed by Intune, Corporate,
 Compliant* and the Defender device inventory showed `lab-cl01.corp.contoso.lab` **Onboarded**, managed
-by Intune, two minutes later. The servers were already onboarded through Defender for Servers.
+by Intune, two minutes later. `lab-cl02` and `lab-cl03` followed with no further action after one
+lab-user sign-in each (MDM enrollment state 1 on both). The servers were already onboarded through
+Defender for Servers.
 
 ![Intune: lab-cl01 managed and compliant](img-com/c28-intune-cl01-compliant.jpg)
 

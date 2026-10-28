@@ -1,4 +1,4 @@
-# MLZ Security Lab Starter Kit — Implementation Guide (Azure Government)
+# MLZ Security Lab Starter Kit — Implementation Guide (Azure Government / GCC High)
 
 Step-by-step, from an empty Azure Government (GCC High) subscription to a running MLZ Security Lab with
 Microsoft Sentinel connectors, analytics rules and UEBA enabled — using only the Azure portal, Cloud Shell
