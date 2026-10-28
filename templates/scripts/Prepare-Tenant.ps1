@@ -53,10 +53,48 @@ Import-Module Microsoft.Graph.Authentication
 $scopes = @('Policy.ReadWrite.MobilityManagement', 'Application.ReadWrite.All', 'Policy.Read.All',
   'Policy.ReadWrite.ConditionalAccess', 'User.ReadWrite.All', 'Organization.Read.All', 'Group.ReadWrite.All',
   'DeviceManagementConfiguration.ReadWrite.All', 'DeviceManagementServiceConfig.ReadWrite.All')
+
+# Device-code sign-in done by hand (OAuth 2.0 device authorization grant, RFC 8628) instead of
+# `Connect-MgGraph -UseDeviceCode`: the Graph PowerShell SDK cancels its device-code flow after a
+# hard-coded 120 seconds ("Authentication timed out after 120 seconds due to inactivity"; -ClientTimeout
+# does not change it), which is not enough for a sign-in with MFA. The code issued here is valid for the
+# full 15 minutes the identity platform grants. Same first-party public client as the SDK.
+function Get-GraphDeviceCodeToken {
+  param([string[]]$Scopes, [string]$Cloud)
+  $login = if ($Cloud -eq 'Global') { 'https://login.microsoftonline.com' } else { 'https://login.microsoftonline.us' }
+  $graph = if ($Cloud -eq 'Global') { 'https://graph.microsoft.com' } else { 'https://graph.microsoft.us' }
+  $tenant = try { (Get-AzContext -ErrorAction Stop).Tenant.Id } catch { $null }
+  if (-not $tenant) { $tenant = 'organizations' }
+  $clientId = '14d82eec-204b-4c2f-b7e8-296a70dab67e'   # Microsoft Graph Command Line Tools (public client)
+  $scope = (($Scopes | ForEach-Object { "$graph/$_" }) + @('openid', 'offline_access')) -join ' '
+  $dc = Invoke-RestMethod -Method POST -Uri "$login/$tenant/oauth2/v2.0/devicecode" -Body @{ client_id = $clientId; scope = $scope }
+  Write-Host $dc.message
+  Write-Host ("(the code is valid for {0} minutes)" -f [int]($dc.expires_in / 60))
+  $deadline = (Get-Date).AddSeconds($dc.expires_in)
+  $interval = [Math]::Max([int]$dc.interval, 5)
+  while ((Get-Date) -lt $deadline) {
+    Start-Sleep -Seconds $interval
+    try {
+      $tok = Invoke-RestMethod -Method POST -Uri "$login/$tenant/oauth2/v2.0/token" -Body @{
+        grant_type = 'urn:ietf:params:oauth:grant-type:device_code'; client_id = $clientId; device_code = $dc.device_code }
+      return $tok.access_token
+    } catch {
+      $err = $null
+      try { $err = ($_.ErrorDetails.Message | ConvertFrom-Json).error } catch {}
+      if ($err -eq 'authorization_pending') { continue }
+      if ($err -eq 'slow_down') { $interval += 5; continue }
+      throw "Device-code sign-in failed: $($_.ErrorDetails.Message)"
+    }
+  }
+  throw 'Device-code sign-in timed out (code expired). Run the script again for a new code.'
+}
 Write-Output "Connecting to Microsoft Graph ($Cloud). Complete the device-code sign-in in your browser."
-Connect-MgGraph -Environment $Cloud -Scopes $scopes -UseDeviceCode -NoWelcome
+$accessToken = Get-GraphDeviceCodeToken -Scopes $scopes -Cloud $Cloud
+Connect-MgGraph -Environment $Cloud -AccessToken (ConvertTo-SecureString $accessToken -AsPlainText -Force) -NoWelcome
 $ctx = Get-MgContext
-Write-Output "Signed in as $($ctx.Account) to tenant $($ctx.TenantId)"
+$claims = $accessToken.Split('.')[1]; $claims = $claims.PadRight($claims.Length + (4 - $claims.Length % 4) % 4, '=')
+$claims = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($claims)) | ConvertFrom-Json
+Write-Output "Signed in as $($claims.upn) to tenant $($claims.tid)"
 
 # ---------------- 1. Intune MDM user scope + URLs ----------------
 if (-not $SkipMdm) {
@@ -118,7 +156,7 @@ try {
       Write-Output "Conditional Access: excluded Intune Enrollment from '$($p.displayName)'"
     } else {
       $scope = @(@($u.includeUsers) + @($u.includeGroups | ForEach-Object { "group:$_" }) + @($u.includeRoles | ForEach-Object { "role:$_" })) -join ', '
-      Write-Warning "Conditional Access policy '$($p.displayName)' (users: $scope) targets all apps and does not exclude Microsoft Intune Enrollment ($intuneEnrollmentAppId). Re-run with -ExcludeIntuneEnrollmentFromCa or exclude it in the portal."
+      Write-Warning "Conditional Access policy '$($p.displayName)' (users: $scope) targets all apps and does not exclude Microsoft Intune Enrollment ($intuneEnrollmentAppId). If it requires MFA, the clients' silent auto-enrollment fails with 0x8018002A until the app is excluded. Re-run with -SkipMdm -ExcludeIntuneEnrollmentFromCa or exclude it in the portal (policy -> Target resources -> Exclude)."
     }
   }
 } catch { Write-Warning "Conditional Access check skipped: $($_.Exception.Message)" }

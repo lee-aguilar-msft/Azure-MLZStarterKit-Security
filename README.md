@@ -68,11 +68,77 @@ Resource Manager each have a resource to assess. Each piece is a toggle (`deploy
 
 ---
 
+## Prerequisites — do these first
+
+**1. Pick the right cloud and region.** Azure Government: `usgovvirginia` (tested). Azure Commercial:
+check which regions the subscription can actually create VMs in *before* deploying — internal, trial and
+new subscriptions often have region-level VM restrictions that make every size `NotAvailableForSubscription`
+(the Commercial guide, section 2.4, has the SKU-API check; West US 2 worked on the test subscription).
+
+**2. Register features and resource providers** — once per subscription, Cloud Shell in the target cloud:
+
+```bash
+# CMK encrypted disks used by MLZ ephemeral VMs
+az feature register --name EncryptionAtHost --namespace Microsoft.Compute
+# Commercial only: some subscriptions require this for the MLZ public IPs (firewall / Bastion)
+az feature register --name AllowBringYourOwnPublicIpAddress --namespace Microsoft.Network
+az provider register --namespace Microsoft.Compute
+az provider register --namespace Microsoft.Network
+
+# Auto-shutdown schedules
+az provider register --namespace Microsoft.DevTestLab
+# Azure Arc Private Link Scope (if deployArcPrivateLink = true)
+az provider register --namespace Microsoft.HybridCompute
+# Inline Sentinel content script only (if deploySentinelContentScript = true)
+az provider register --namespace Microsoft.ContainerInstance
+# CSPM coverage samples (API Management, App Service, Key Vault)
+az provider register --namespace Microsoft.ApiManagement
+az provider register --namespace Microsoft.Web
+az provider register --namespace Microsoft.KeyVault
+
+# Wait until both features show Registered
+az feature show --name EncryptionAtHost --namespace Microsoft.Compute --query "properties.state" -o tsv
+az feature show --name AllowBringYourOwnPublicIpAddress --namespace Microsoft.Network --query "properties.state" -o tsv
+```
+
+**3. Entra ID**
+
+- A **security group** for Entra VM login — pass its object ID as `entraLoginPrincipalId` (Commercial can
+  instead set `autoCreateEntraGroup = true`).
+- A cloud-only **break-glass Global Administrator**, excluded from Conditional Access, before Entra Connect
+  sync is turned on.
+- A **verified domain** for the lab user's UPN suffix (`<tenant>.onmicrosoft.com` is fine) — hybrid
+  join and MDM auto-enrollment need the synced user's UPN to resolve in Entra.
+- **Licences** for the lab user: Entra ID P1/P2 + Intune (any Microsoft 365 E3/E5-class SKU); Defender
+  for Endpoint P2 for the clients (the servers are covered by Defender for Servers P2).
+
+**4. Your account**
+
+- Azure: **Owner** on the subscription (the template assigns RBAC, policy and Defender plans).
+- Entra: **Global Administrator** (or Security Administrator + Intune Administrator + Cloud Application
+  Administrator + License Administrator) for the post-deploy scripts — Sentinel UEBA refuses anything less
+  (`User does not have required admin roles`); **Hybrid Identity Administrator** for the Entra Connect wizard.
+  Activate the roles through PIM before step 5 of the guide.
+
+**5. Conditional Access.** Silent Intune enrollment of the hybrid-joined clients fails with `0x8018002A`
+(or `AADSTS50076 / interaction_required` in GCC High) while any enabled all-apps policy requires MFA
+without excluding the **Microsoft Intune Enrollment** app (`d4ebce55-015a-49b5-a083-c84d1797ae8c`).
+`Prepare-Tenant.ps1` reports the policies; add the exclusion with `-ExcludeIntuneEnrollmentFromCa` or in
+the portal (policy → Target resources → Exclude).
+
+**6. Cloud Shell in PowerShell mode** for the post-deploy scripts — a `pwsh` started from the Bash shell
+has no Azure sign-in.
+
+---
+
 ## Deploy
 
-> **New to the kit?** Follow the step-by-step [Implementation Guide](docs/IMPLEMENTATION.md) — it walks
-> an operator from an empty Azure Government subscription to Sentinel connectors, analytics rules and
-> UEBA, with screenshots from a real run and a troubleshooting table of every error hit on the way.
+> **New to the kit?** Follow the step-by-step implementation guide for your cloud — each walks an
+> operator from an empty subscription to Sentinel connectors, analytics rules and UEBA, with screenshots
+> from a real run and a troubleshooting table of every error hit on the way:
+>
+> - [Implementation Guide — Azure Government (GCC High)](docs/IMPLEMENTATION.md) ([Word](docs/MLZ-Security-Lab-Implementation-Guide.docx))
+> - [Implementation Guide — Azure Commercial](docs/IMPLEMENTATION-COMMERCIAL.md) ([Word](docs/MLZ-Security-Lab-Implementation-Guide-Commercial.docx))
 
 ### Option A — Portal (blue button)
 
@@ -94,9 +160,9 @@ Azure Commercial:
 ./deploy.ps1 -ParametersFile ./params/gov-lab.json -AzureEnvironment AzureUSGovernment `
   -SubscriptionId <sub-id> -Location usgovvirginia
 
-# Commercial
+# Commercial — pick a region the subscription can create VMs in first (Commercial guide, section 2.4)
 ./deploy.ps1 -ParametersFile ./params/commercial-lab.json -AzureEnvironment AzureCloud `
-  -SubscriptionId <sub-id> -Location eastus
+  -SubscriptionId <sub-id> -Location westus2
 ```
 
 The passwords (`adminPassword`, `safeModeAdminPassword`, `labUserPassword`) are intentionally blank in
@@ -125,53 +191,33 @@ the prior build, redeploys, then runs the Sentinel content/analytics/UEBA enable
 
 ## Post-deploy (finishes the identity + Sentinel content)
 
-Some steps need interactive MFA and are deliberately **not** automated. After the deployment, run in
-Cloud Shell (Gov: `portal.azure.us` → Cloud Shell):
+Some steps need interactive MFA and are deliberately **not** automated. After the deployment, in a
+**PowerShell-mode** Cloud Shell (Gov: `portal.azure.us`; Commercial: `portal.azure.com`):
 
 ```powershell
-./templates/scripts/Post-Deploy.ps1 -SubscriptionId <sub> -ResourceGroupName <tier3-rg> `
-  -WorkspaceName <prefix>-law-lab -EnableXdrConnector
+git clone -q https://github.com/lee-aguilar-msft/Azure-MLZStarterKit-Security.git ~/kit
+cd ~/kit/templates/scripts
+./Post-Deploy.ps1 -Cloud USGov -SubscriptionId <sub> -ResourceGroupName <tier3-rg> `
+  -WorkspaceName <prefix>-law-lab -EnableXdrConnector      # Commercial: -Cloud Global
 ```
 
-It enables the Sentinel content/analytics/UEBA, then prints the checklist for:
-1. the cloud-only **break-glass Global Admin** (create and exclude from Conditional Access *before*
-   enabling Entra Connect sync),
-2. the Conditional Access **exclusion of the "Microsoft Intune Enrollment" app**
-   (`d4ebce55-015a-49b5-a083-c84d1797ae8c`) — the fix for the `AADSTS50076 / interaction_required`
-   that otherwise blocks silent MDM enrollment in GCC High, and
-3. **Entra Connect** configuration + the **hybrid-join cycle** (`Invoke-HybridJoinCycle.ps1`).
+It installs the Content Hub solutions, enables every matching analytics rule, UEBA and the Defender XDR
+connector, routes the Entra ID and Activity logs, re-asserts the Defender plans, then prints the
+checklist for the identity chain:
 
----
+1. `./Prepare-Tenant.ps1 -Cloud <USGov|Global> -ConfigureMde` — MDM user scope and URLs, the *Microsoft
+   Intune Enrollment* service principal, the Conditional Access report (add `-ExcludeIntuneEnrollmentFromCa`
+   to apply the exclusion), the Intune ↔ MDE connector, the `LAB-Intune-Devices` group and the EDR policy.
+   One toggle has no API: Defender portal → Settings → Endpoints → Advanced features → **Microsoft Intune
+   connection = On**.
+2. **Entra Connect** on `ms01` (Bastion, the one wizard that needs your MFA), then
+   `./Prepare-Tenant.ps1 -Cloud <cloud> -SkipMdm -LabUserUpn <lab user UPN>` to license the synced user.
+3. **Hybrid join** — the clients retry on their own every 30 minutes; `dsregcmd /join` through Run command
+   (or `Invoke-HybridJoinCycle.ps1` on `ms01`) does it at once.
+4. The lab user registers **MFA** once and signs in once to each client — the auto-enrollment GPO then
+   enrolls it in Intune and the EDR policy onboards it to Defender for Endpoint.
 
-## Prerequisites
-
-Run once per subscription in Cloud Shell (PowerShell), in the target cloud:
-
-```powershell
-# CMK encrypted disks used by MLZ ephemeral VMs
-az feature register --name EncryptionAtHost --namespace Microsoft.Compute
-az provider register --namespace Microsoft.Compute
-
-# Auto-shutdown schedules
-az provider register --namespace Microsoft.DevTestLab
-# Azure Arc Private Link Scope (if deployArcPrivateLink = true)
-az provider register --namespace Microsoft.HybridCompute
-# Private DNS Resolver (if deployPrivateDnsResolver = true)
-az provider register --namespace Microsoft.Network
-# Inline Sentinel content script only (if deploySentinelContentScript = true)
-az provider register --namespace Microsoft.ContainerInstance
-# CSPM coverage samples (API Management, App Service, Key Vault)
-az provider register --namespace Microsoft.ApiManagement
-az provider register --namespace Microsoft.Web
-az provider register --namespace Microsoft.KeyVault
-
-# Wait until EncryptionAtHost shows Registered
-az feature show --name EncryptionAtHost --namespace Microsoft.Compute --query "properties.state" -o tsv
-```
-
-You also need an Entra **security group** for VM login — pass its object ID as `entraLoginPrincipalId`
-(in Commercial you can instead set `autoCreateEntraGroup = true`). Licensing for Intune auto-enrollment
-(Entra ID P1/P2 + Intune) is a tenant prerequisite, not deployed here.
+Both implementation guides walk through every step with the real output and a troubleshooting table.
 
 ---
 
@@ -219,7 +265,8 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lee-aguilar-msft/Azure
   inside the firewall rules, so the same templates produce the right `.us`/`.com` hosts in each cloud.
 - The **inline Sentinel content** deploymentScript needs Azure Container Instance reachability; in a
   locked MLZ network the GitHub Action / Cloud Shell path is more reliable, so it defaults to **off**.
-- **Entra Connect** and **hybrid join** are interactive (MFA) and are staged, not fully automated.
+- **Entra Connect** is interactive (MFA) and staged, not automated; hybrid join and Intune enrollment are
+  automatic once the sync, the licence and the Conditional Access exclusion are in place.
 - **MDI** (Defender for Identity) sensors are intentionally **out of scope** — installed separately.
 - SLES/RHEL/Ubuntu use PAYG marketplace images; if your subscription requires a plan acceptance for a
   given image, accept it (or adjust the image reference) before deploying.

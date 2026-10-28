@@ -811,60 +811,9 @@ Screenshots of the defects as they appeared (runs 1 and 2):
 
 ---
 
-## 9. Azure Commercial — the same kit on a commercial subscription
+## 9. Azure Commercial
 
-The kit is cloud-aware, so the Commercial run is the same seven-tab form behind the **Deploy to Azure**
-button (the one without *Gov*) on `portal.azure.com`. It was run for real on a Microsoft-internal
-Commercial test subscription on 27 October 2026; this section lists only what differed from the
-Government walkthrough above. The first Commercial attempt failed on three things that the Government
-runs never showed (troubleshooting #48–#51); all are fixed on `main`, and the second attempt deployed
-end to end in one pass.
-
-### 9.1 Prerequisites that differ
-
-| Step | Government | Commercial |
-|---|---|---|
-| Portal / Cloud Shell | `portal.azure.us` | `portal.azure.com`; the Cloud Shell storage prompt and provider registrations are identical |
-| Features | `EncryptionAtHost` | `EncryptionAtHost` **and** `Microsoft.Network/AllowBringYourOwnPublicIpAddress` (section 2.3, #48) |
-| Region | `usgovvirginia` | **Check the SKU API first** (section 2.4, #51). The test subscription could not create a single VM in East US, Central US, West US or North Central US; West US 2 had every size. Pick the region from that list, not from habit |
-| VM size | `Standard_D2ads_v6` (Dadsv6 quota present) | Whatever the Compute tab's live picker offers *and* has quota — `az vm list-usage -l <region>` — `Standard_D2as_v7` on the test subscription (Dadsv6 family had no quota there even though the size was deployable) |
-| UPN suffix | tenant's verified `.onmicrosoft.us` domain | tenant's verified domain, e.g. `<tenant>.onmicrosoft.com` |
-| Cloud endpoints | `.us` (derived from the region) | `.com` (derived from the region); `Post-Deploy.ps1 -Cloud Global`, `Prepare-Tenant.ps1 -Cloud Global` |
-
-### 9.2 Form differences
-
-Basics: the **Resource Naming Identifier** accepts 1–3 characters; the run used `mca` / `dev` /
-`seclab` / `sec` / prefix `lab`, which produces resource groups `mca-dev-usw2-*` and VMs `lab-*`. Changing
-anything on Basics after the later tabs are filled resets the Compute tab's image and size pickers — fill
-Basics first and leave it alone.
-
-Security and Compliance: all Defender plans are offered (Government hides App Service and APIs). The run
-enabled every plan except APIs. Under the hood the template now creates the plans **one at a time**
-(#49) because Commercial rejects concurrent plan updates; expect them to appear in the deployment list
-one after another over the first two minutes.
-
-Compute: on Commercial the three size fields are the portal's own **size picker** (*Change size*). It
-lists only the sizes this subscription can deploy in the chosen region, grouped by series, so a size that
-would fail with `SkuNotAvailable` is never offered. On first load the Linux picker can stay greyed
-("Change size" disabled) until the region is re-selected on Basics; that is a portal race, not a
-template error. Search `D2as_v7` in the picker, expand *D-Series v7*, select, **Select**.
-
-
-Identity: the NetBIOS field shows `CORP` as a placeholder only — type it, or Review + create fails with
-*The value must not be empty*.
-
-### 9.3 Deployment timing (West US 2, run #2)
-
-| Phase | Started | Finished | Notes |
-|---|---|---|---|
-| Defender plans + policy assignments | 10:55 | 10:58 | 10 plans sequential, NIST 800-53 R5 + MCSB |
-| MLZ core (hub firewall Premium, spokes, Bastion, monitoring, diagnostics) | 10:56 | 11:28 | firewall ≈ 12 min, Bastion ≈ 10 min |
-| Tier-3 spoke + CSPM coverage | 11:28 | 11:37 | |
-| VM module (DC, members, clients, Linux) | 11:35 | 11:56 | failed on `lab-sles01` (#52) — all other VMs provisioned on D2as_v7; run #3 after the SP6 change |
-| security-lab (workspace, DCRs, Sentinel) + Arc PLS | TBD | TBD | |
-
-
-### 9.4 After the deployment
-
-Same as section 5, with `-Cloud Global` on both scripts. Intune/MDE enrollment uses the `.com` endpoints
-the GPO already carries for non-Government regions, so no endpoint edits are needed.
+The same kit deploys to Azure Commercial, but the portal, endpoints, region choice, VM sizes and several
+pitfalls differ, so the Commercial walkthrough is a separate document: **`IMPLEMENTATION-COMMERCIAL.md`**
+(Word: `MLZ-Security-Lab-Implementation-Guide-Commercial.docx`). Troubleshooting entries #48–#52 above
+are the Commercial-only defects found while writing it.

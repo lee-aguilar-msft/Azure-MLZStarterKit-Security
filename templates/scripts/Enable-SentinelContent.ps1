@@ -59,10 +59,17 @@ $ctx = (Get-AzContext)
 if (-not $ctx) { Connect-AzAccount -Subscription $SubscriptionId | Out-Null; $ctx = Get-AzContext }
 Set-AzContext -Subscription $SubscriptionId | Out-Null
 $arm = $ctx.Environment.ResourceManagerUrl.TrimEnd('/')
-$tok = Get-AzAccessToken -ResourceUrl $ctx.Environment.ResourceManagerUrl
-# Az.Accounts 4+ (Cloud Shell today) returns the token as a SecureString; older modules return plain text
-$token = if ($tok.Token -is [System.Security.SecureString]) { [System.Net.NetworkCredential]::new('', $tok.Token).Password } else { $tok.Token }
-$headers = @{ Authorization = "Bearer $token"; 'Content-Type' = 'application/json' }
+# ARM bearer token. Cloud Shell tokens live about an hour and this script can run longer on a large
+# Content Hub catalog, so the token is refreshed every 20 minutes and whenever ARM answers 401.
+$script:tokenTime = [datetime]::MinValue
+function Update-ArmToken {
+  $tok = Get-AzAccessToken -ResourceUrl $ctx.Environment.ResourceManagerUrl
+  # Az.Accounts 4+ (Cloud Shell today) returns the token as a SecureString; older modules return plain text
+  $t = if ($tok.Token -is [System.Security.SecureString]) { [System.Net.NetworkCredential]::new('', $tok.Token).Password } else { $tok.Token }
+  $script:headers = @{ Authorization = "Bearer $t"; 'Content-Type' = 'application/json' }
+  $script:tokenTime = Get-Date
+}
+Update-ArmToken
 $base = "$arm/subscriptions/$SubscriptionId/resourceGroups/$ResourceGroupName/providers/Microsoft.OperationalInsights/workspaces/$WorkspaceName/providers/Microsoft.SecurityInsights"
 $apiContent = '2024-03-01'
 $apiRules = '2024-03-01'
@@ -73,10 +80,12 @@ function Invoke-Arm {
   param([string]$Method, [string]$Uri, $Body)
   $json = if ($Body) { $Body | ConvertTo-Json -Depth 60 } else { $null }
   for ($attempt = 1; $attempt -le 5; $attempt++) {
-    try { return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $headers -Body $json }
+    if (((Get-Date) - $script:tokenTime).TotalMinutes -ge 20) { Update-ArmToken }
+    try { return Invoke-RestMethod -Method $Method -Uri $Uri -Headers $script:headers -Body $json }
     catch {
       $code = 0
       try { $code = [int]$_.Exception.Response.StatusCode } catch { }
+      if ($code -eq 401 -and $attempt -lt 5) { Update-ArmToken; continue }
       if ($code -eq 429 -or $code -ge 500) { Start-Sleep -Seconds (5 * $attempt); continue }
       # Surface the ARM error body (pwsh puts it in ErrorDetails) so failures are actionable
       $detail = if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $_.Exception.Message }
@@ -131,15 +140,37 @@ foreach ($want in $Solutions) {
       Write-Warning "No packaged content returned for $want - open Content hub and click Install."; continue
     }
     $tpl = $detail.properties.packagedContent
-    $tplFile = Join-Path ([IO.Path]::GetTempPath()) "$pkgId.json"
-    $tpl | ConvertTo-Json -Depth 100 | Set-Content -Path $tplFile -Encoding utf8
+    # The packaged template is sent inline in an ARM deployment request, which is capped at 4 MB.
+    # New-AzResourceGroupDeployment re-serialises the template pretty-printed and pushes the Commercial
+    # Microsoft Defender XDR solution over that cap, so the deployment is PUT directly with a compact body.
+    $tplJson = $tpl | ConvertTo-Json -Depth 100 -Compress
     $tplParams = @{}
     $pnames = @($tpl.parameters.PSObject.Properties.Name)
-    if ($pnames -contains 'workspace') { $tplParams['workspace'] = $WorkspaceName }
-    if ($pnames -contains 'workspace-location') { $tplParams['workspace-location'] = $wsLocation }
+    if ($pnames -contains 'workspace') { $tplParams['workspace'] = @{ value = $WorkspaceName } }
+    if ($pnames -contains 'workspace-location') { $tplParams['workspace-location'] = @{ value = $wsLocation } }
     $short = $want -replace '^azure-sentinel-solution-', ''
     $depName = ('sentinel-' + $short.Substring(0, [Math]::Min(30, $short.Length)) + '-' + (Get-Date -Format 'yyyyMMddHHmm'))
-    New-AzResourceGroupDeployment -Name $depName -ResourceGroupName $ResourceGroupName -TemplateFile $tplFile -TemplateParameterObject $tplParams -ErrorAction Stop | Out-Null
+    $depUri = "$arm/subscriptions/$SubscriptionId/resourcegroups/$ResourceGroupName/providers/Microsoft.Resources/deployments/$depName`?api-version=2021-04-01"
+    $depBody = '{"properties":{"mode":"Incremental","template":' + $tplJson + ',"parameters":' + ($tplParams | ConvertTo-Json -Compress -Depth 5) + '}}'
+    if ($depBody.Length -gt 4000000) {
+      # Larger than the inline cap even compressed: stage the template in a lab storage account and deploy it by link (SAS, 1 hour).
+      $sa = Get-AzStorageAccount -ResourceGroupName $ResourceGroupName | Where-Object { $_.PublicNetworkAccess -ne 'Disabled' } | Select-Object -First 1
+      if (-not $sa) { throw "template too large for an inline deployment and no reachable storage account in $ResourceGroupName to stage it" }
+      $tplFile = Join-Path ([IO.Path]::GetTempPath()) "$pkgId.json"; Set-Content -Path $tplFile -Value $tplJson -Encoding utf8
+      $sctx = $sa.Context
+      if (-not (Get-AzStorageContainer -Name 'sentinel-content' -Context $sctx -ErrorAction SilentlyContinue)) { New-AzStorageContainer -Name 'sentinel-content' -Context $sctx -Permission Off | Out-Null }
+      Set-AzStorageBlobContent -File $tplFile -Container 'sentinel-content' -Blob "$pkgId.json" -Context $sctx -Force | Out-Null
+      $sas = New-AzStorageBlobSASToken -Container 'sentinel-content' -Blob "$pkgId.json" -Permission r -ExpiryTime (Get-Date).AddHours(1) -Context $sctx -FullUri
+      Write-Output "  template is larger than the inline limit - deploying it from $($sa.StorageAccountName)/sentinel-content"
+      $depBody = @{ properties = @{ mode = 'Incremental'; templateLink = @{ uri = $sas }; parameters = $tplParams } } | ConvertTo-Json -Compress -Depth 8
+    }
+    Invoke-RestMethod -Method PUT -Uri $depUri -Headers $script:headers -Body $depBody | Out-Null
+    do {
+      Start-Sleep -Seconds 15
+      $dep = Invoke-Arm GET $depUri
+      $state = $dep.properties.provisioningState
+    } while ($state -in @('Accepted', 'Running'))
+    if ($state -ne 'Succeeded') { throw "deployment $depName ended $state : $(($dep.properties.error | ConvertTo-Json -Depth 8 -Compress))" }
     Write-Output "Installed: $($pp.displayName) [$contentId] via deployment $depName"
   } catch { Write-Warning "Install of $want failed: $($_.Exception.Message)" }
 }
