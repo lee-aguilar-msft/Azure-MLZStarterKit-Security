@@ -310,6 +310,7 @@ The Linux picker can stay greyed out (*Change size* disabled) for a few seconds 
 while the portal resolves the image; wait, or leave the tab and come back.
 
 ![Compute filled, three pickers on D2as_v7](img-com/c14-form-compute.jpg)
+![The size picker: six lab sizes, D2as_v7 pre-selected](img-com/c15-form-size-picker.jpg)
 
 ### 4.8 Review + create
 
