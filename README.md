@@ -219,6 +219,23 @@ checklist for the identity chain:
 
 Both implementation guides walk through every step with the real output and a troubleshooting table.
 
+### Prove the detections fire (`Test-LabDetections.ps1`)
+
+The hourly data hydration is background activity for hunting and is deliberately quiet: it is not meant to raise
+incidents. To check the whole chain (VM → agent → workspace → analytics rule / Defender → incident), run the
+detection test from the same Cloud Shell:
+
+```powershell
+./Test-LabDetections.ps1 -SubscriptionId <sub> -ResourceGroupName <tier3-rg> -WorkspaceName <workspace> -Cloud Global   # or USGov
+```
+
+It runs ten safe, documented test actions, each matched to a rule the kit enables. On the DC, a disposable account is
+added to and removed from Backup Operators, disabled and re-enabled, set to "password never expires", hit with bad
+passwords and then deleted. On Linux it makes SSH password attempts for a non-existent user. On the clients it runs
+Microsoft's Defender for Endpoint detection test and drops an EICAR file. It then prints, test by test, the alert
+and incident each one produced. Defender alerts arrive within about 10 minutes, and most Sentinel rules run once a
+day, so re-run it with `-VerifyOnly` the next day. `-Only AD|LNX|MDE` runs a subset.
+
 ---
 
 ## Destroy (teardown)
@@ -253,7 +270,7 @@ Invoke-WebRequest -Uri "https://raw.githubusercontent.com/lee-aguilar-msft/Azure
 | `templates/security-lab.json` | Sentinel onboarding, DCRs + associations, optional content/analytics/UEBA deploymentScript. |
 | `templates/arc-private-link.json` | Arc Private Link Scope, private endpoint, Arc private DNS zones, optional Private DNS Resolver. |
 | `templates/cspm-coverage.json` | SQL/Storage/ACR/Key Vault/App Service/API Management + nested-deployment samples for Defender coverage. |
-| `templates/scripts/*.ps1 / *.sh` | Promotion, join, Windows/Linux configuration, hydration, Sentinel content, hybrid-join, post-deploy. |
+| `templates/scripts/*.ps1 / *.sh` | Promotion, join, Windows/Linux configuration, hydration, Sentinel content, hybrid-join, post-deploy, detection test (`Test-LabDetections.ps1`). |
 | `.github/workflows/rebuild-lab.yml` | 90-day OIDC rebuild pipeline. |
 | `build/*.py` | Generators/validator used to assemble and lint the templates (dev-time only). |
 

@@ -72,3 +72,10 @@ Write-Host "`n[3/3] The one interactive step - Microsoft Entra Connect on <prefi
 '@ | Write-Host
 
 Write-Host "`nPost-deploy orchestration complete." -ForegroundColor Green
+Write-Host @"
+
+Prove the detection pipeline end to end (after the identity steps, VMs running):
+  ./Test-LabDetections.ps1 -SubscriptionId $SubscriptionId -ResourceGroupName $ResourceGroupName -WorkspaceName $WorkspaceName -Cloud $Cloud
+It runs a few safe test actions (disposable AD accounts, SSH failures, Defender detection test, EICAR) and lists the
+Sentinel alerts / incidents they raise; re-run it with -VerifyOnly the next day for the rules that run once a day.
+"@

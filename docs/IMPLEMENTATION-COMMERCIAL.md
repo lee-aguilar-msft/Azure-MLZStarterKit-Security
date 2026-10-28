@@ -10,7 +10,7 @@ steps are written out in full here rather than as a list of differences.
 
 Everything in this guide was performed for real in a Commercial test subscription (`westus2`, tenant
 `contoso.onmicrosoft.com`) on 27 October 2026. The screenshots are from those runs. Three deployment runs
-were needed to shake out the Commercial-specific defects listed in section 8 (#48–#59); every fix is on
+were needed to shake out the Commercial-specific defects listed in section 8 (#48–#63); every fix is on
 `main`, so a fresh run of the kit follows the clean path described here.
 
 Repository: <https://github.com/lee-aguilar-msft/Azure-MLZStarterKit-Security>
@@ -595,7 +595,14 @@ Windows. Linux Entra SSH is unaffected.
 
 Identical to the Government guide: the `LAB-Hydration` task on every Windows VM and the `lab-hydrate`
 timer on every Linux VM start during the deployment and run hourly. Section 6.5 shows how to confirm it
-is reaching the workspace.
+is reaching the workspace, and section 6.6 how to make the lab raise real alerts and incidents on demand
+(hydration itself is meant to stay below detection thresholds).
+
+**Hydration only runs while the VMs are on.** The kit gives every lab VM a DevTest auto-shutdown at
+03:00 UTC (23:00 Eastern) and nothing starts them again, so after the first night the workspace goes quiet
+until someone starts the lab. Start it with
+`az vm start --ids $(az vm list -g <tier3-rg> --query "[].id" -o tsv)` (the domain controller first, if you
+start them one by one); the next hourly run picks up from there.
 
 ---
 
@@ -694,6 +701,56 @@ troubleshooting #46/#47 for the last two signals; the fixes carried over).
 
 ![Hydration check from Cloud Shell](img-com/c29-hydration-kql.jpg)
 
+### 6.6 Detection test — prove alerts and incidents fire
+
+Hydration (5.3) is background activity for hunting and is deliberately quiet: in normal operation it raises
+almost nothing. On the test lab the only incident traced to it was a one-off *AD user enabled and password
+not set within 48 hours*, raised when the domain controller's first hydration run created `lab.churn`. To
+prove the detection chain (VM → agent → workspace → analytics rule or Defender → incident), run the
+detection test from the same PowerShell Cloud Shell as step 5, with the VMs running:
+
+```powershell
+cd ~/kit/templates/scripts
+./Test-LabDetections.ps1 -SubscriptionId <subscription-id> -ResourceGroupName mca-dev-usw2-seclab-rg-network `
+  -WorkspaceName law-mca-lab -Cloud Global
+```
+
+It runs ten safe, documented test actions through Run command and then lists, per test, the alert and
+incident each one raised. On the domain controller the AD changes are made by a temporary admin
+(`lab.detop`), because several rules ignore changes made by SYSTEM, which is what Run command runs as.
+That account and the disposable test user both get random passwords that never leave the DC, and both
+are deleted at the end.
+
+| Test | Action | Expected Sentinel alert | Rule runs |
+|---|---|---|---|
+| AD-1 | `lab.dettest` added to *Backup Operators*, removed 20 s later | User account added to built in domain local or global group; Account added and removed from privileged groups | daily |
+| AD-2 | `lab.dettest` disabled and re-enabled | User account enabled and disabled within 10 mins | daily |
+| AD-3 | *Password never expires* set | AD account with Don't Expire Password | daily |
+| AD-4 | 6 bad passwords, then the right one | SecurityEvent - Multiple authentication failures followed by a success | every 2 h |
+| AD-5 | 25 bad passwords inside a minute | Failed logon attempts by valid accounts within 10 mins | every 10 min |
+| AD-6 | `lab.dettest` deleted minutes after creation | User account created and deleted within 10 mins; AD user enabled and password not set within 48 hours | daily |
+| LNX-1 | 20 SSH password attempts for a non-existent user, `lab-ubu01` → `lab-rhel01` | SSH - Potential Brute Force; Failed logon attempts in authpriv | daily |
+| MDE-1 | Microsoft's documented Defender for Endpoint detection test on `lab-cl02` | Defender alert → incident | minutes |
+| MDE-2 | EICAR antivirus test file on `lab-cl03` | *'EICAR_Test_File' malware was prevented* → incident | minutes |
+| MDE-3 | EICAR file + on-demand scan on `lab-ubu01` | Defender alert for EICAR | minutes |
+
+The script waits up to 25 minutes for the fast detections and prints the table every 5 minutes. A rule
+marked *daily* runs once every 24 hours from when it was created (the moment Post-Deploy enabled it), so
+re-run the same command with `-VerifyOnly` the next day; it remembers when the test ran. `-Only AD`,
+`-Only LNX` or `-Only MDE` repeats one group. Every alert also shows up as an incident in the Defender portal
+(`security.microsoft.com` → *Incidents & alerts*) and in Microsoft Sentinel → *Incidents*.
+
+**Result on the test lab (28 Oct 2026).** The three fast detections fired within minutes of the test
+actions and each one opened an incident: MDE-1 (*Suspicious RunCommandExtension.exe behavior* on
+`lab-cl02`) and MDE-2 (*'EICAR_Test_File' malware was prevented* on `lab-cl03`) about 10 minutes after the
+run, and AD-5 (*Failed logon attempts by valid accounts within 10 mins*) at the rule's next 10-minute run.
+The daily and 2-hourly rules (AD-1 to AD-4, AD-6, LNX-1) show *pending* until they next evaluate; re-run
+with `-VerifyOnly` the next day. MDE-3 stayed *pending* on the test lab: the Linux scan found and reported
+the EICAR file, but with real-time protection off on the Linux VMs no Defender alert followed
+(troubleshooting #63).
+
+![Detection test results from Cloud Shell](img-com/c30-detection-test.jpg)
+
 ---
 
 ## 7. Teardown
@@ -739,6 +796,10 @@ entries that only showed up on Azure Commercial. All fixes are on `main`.
 | 57 | Post-Deploy | Access token expires half-way through the analytics-rule loop (`ExpiredAuthenticationToken`) | A Cloud Shell token lives ~1 h; the Commercial catalogue has 300 rule templates to install | `Enable-SentinelContent.ps1` refreshes its ARM token every 20 min and on any 401 |
 | 58 | Verify | Defender for Servers reads **Free** after a deployment that set it to P2 | Commercial Defender plan API occasionally reverts the Servers plan when sub-plans are set in the same pass (also Government #23) | `Post-Deploy.ps1` re-asserts every plan and prints the final table; re-run it if the portal shows *Off* |
 | 59 | Client / Intune | Client is hybrid joined, the user has a PRT, but Intune lists no devices; on the client the task *Schedule created by enrollment client for automatically enrolling in MDM from AAD* ends with **0x8018002A** (2149056554) and `LAB-IntuneAutoEnroll-Retry` fails the same way | Conditional Access requires MFA for the enrollment: the Microsoft-managed *… for Microsoft partners and vendors* policies in the test tenant apply to all users and all cloud apps and do not exclude *Microsoft Intune Enrollment*; a background enrollment cannot answer an MFA prompt | `./Prepare-Tenant.ps1 -Cloud Global -SkipMdm -ExcludeIntuneEnrollmentFromCa` adds the app exclusion to every enabled all-apps policy (or add it by hand: policy → Target resources → Exclude → *Microsoft Intune Enrollment*), then re-trigger the client task — `Start-ScheduledTask -TaskPath '\Microsoft\Windows\EnterpriseMgmt\<guid>\' -TaskName 'Schedule created by enrollment client for automatically enrolling in MDM from AAD'` via Run command |
+| 60 | Hydration / Verify | The hydration check (6.5) shows group churn, sign-in failures and `nltest` up to a point in the night, then nothing; the Sentinel incident list stays almost empty | Two separate things. All lab VMs are deallocated by the DevTest auto-shutdown at 03:00 UTC and nothing restarts them, so hydration pauses. And hydration is written to stay *under* detection thresholds; it feeds hunting, it is not an alert generator | Start the VMs (`az vm start`, section 5.3). To see alerts and incidents, run `Test-LabDetections.ps1` (section 6.6) |
+| 61 | Hydration (Linux) | No Linux authentication failures in Syslog although the hydration script "tries a failed `su`" every hour | A non-interactive `su` with the password on stdin never reaches PAM (no TTY), so nothing is logged | `hydrate-linux.sh` now makes one SSH password attempt for a non-existent user against the VM's own sshd every second hour (12 a day, under the 15-attempt rule thresholds); sshd/PAM log *Failed password for invalid user* / *user unknown*. Existing labs keep the old script until redeployed |
+| 62 | Detection test | `Test-LabDetections.ps1` stops on the DC with *Exception calling "ValidateCredentials" … The LDAP server is unavailable* partway through the bad-password burst; `lab.dettest` is left in AD | After a run of failed binds the DC drops the reused LDAP connection | The script opens a fresh connection per attempt, catches each failure and always deletes `lab.dettest` (it also removes leftovers at the start of the next run) |
+| 63 | Detection test | The Linux EICAR test (MDE-3) finds `Virus:DOS/EICAR_Test_File`, but the file is still there afterwards and the test stays *pending* (no Defender alert or incident) | On the test lab `mdatp health` reported real-time protection **off** on the Linux servers onboarded through Defender for Servers: an on-demand scan detects and reports, nothing removes the file | Expected with that setting. The script deletes the test file itself. Switch Linux devices to active mode in the Defender portal or with `mdatp config real-time-protection --value enabled` if you want blocking |
 | — | Sentinel | *Content hub* and *Data connectors* open the Defender portal (`security.microsoft.com`) instead of a blade in the Azure portal | Commercial Sentinel workspaces onboarded to the unified Defender portal move those pages there | Use the Defender portal links; the kit's post-deploy does not need them |
 | — | Identity tab | *Validation failed. Required information is missing or not valid* → **Domain NetBIOS Name: The value must not be empty** | The field shows `CORP` as a placeholder, not a value | Type `CORP` (section 4.6) |
 | — | Compute tab | Linux *Change size* link greyed out, no size shown | Portal race while the size selector resolves the Linux image on first load | Wait a few seconds, or switch tabs and come back; re-selecting the region on Basics also re-triggers it (but resets the other Compute fields) |

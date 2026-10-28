@@ -596,11 +596,18 @@ form does not show them) and is installed during the deployment itself — there
 |---|---|---|---|---|
 | `lab-dc01` | forest baseline (deployment step *forest baseline*) | ~5 min after the baseline | every 60 min | user activity below + directory activity: reads all users/computers, creates the user `lab.churn` in *LAB → Users*, flips its membership in `LAB-SOC-Analysts` (events 4728/4729), and two failed sign-ins for it (4625/4771) |
 | member servers and clients | member configuration (deployment step *configure members*) | ~15 min after configuration | every 60 min | creates and deletes temp files, lists processes/services, runs `whoami /all`, `ipconfig /all`, `nltest /dsgetdc`, one HTTPS request to microsoft.com |
-| `lab-rhel01`, `lab-ubu01`, `lab-sles01` | Linux configuration | right away, and 5 min after every boot | every 60 min | file/process/network listings, `sudo -n true`, one HTTPS request, a failed `su` (auth failure in Syslog), tagged `lab-hydrate` in Syslog |
+| `lab-rhel01`, `lab-ubu01`, `lab-sles01` | Linux configuration | right away, and 5 min after every boot | every 60 min | file/process/network listings, `sudo -n true`, one HTTPS request, every second hour one SSH password attempt for a non-existent user against the VM's own sshd (auth failure in Syslog), tagged `lab-hydrate` in Syslog |
 
 Everything is logged on the VM: `C:\LabTools\hydration.log` (Windows) and `journalctl -t lab-hydrate` (Linux).
 To pause it, disable the `LAB-Hydration` task (Windows) or `systemctl disable --now lab-hydrate.timer` (Linux).
-Section 6.5 shows how to confirm it is reaching the workspace.
+Section 6.5 shows how to confirm it is reaching the workspace; section 6.6 how to make the lab raise real
+alerts and incidents on demand (hydration itself is meant to stay below detection thresholds).
+
+**Hydration only runs while the VMs are on.** The kit gives every lab VM a DevTest auto-shutdown at
+03:00 UTC (23:00 Eastern) and nothing starts them again, so after the first night the workspace goes quiet
+until someone starts the lab. Start it with
+`az vm start --ids $(az vm list -g <tier3-rg> --query "[].id" -o tsv)` (the domain controller first, if you
+start them one by one); the next hourly run picks up from there.
 
 ---
 
@@ -686,6 +693,49 @@ appeared — the group churn on the DC (22 events in 24 h, one per hour) and the
 Windows VMs:
 
 ![Hydration check: group churn on the DC, user activity on every Windows VM](img/107-hydration-kql.jpg)
+
+### 6.6 Detection test — prove alerts and incidents fire
+
+Hydration (5.3) is background activity for hunting and is deliberately quiet: in normal operation it raises
+almost nothing. On the Commercial test lab the only incident traced to it was a one-off *AD user enabled and password
+not set within 48 hours*, raised when the domain controller's first hydration run created `lab.churn`. To
+prove the detection chain (VM → agent → workspace → analytics rule or Defender → incident), run the
+detection test from the same PowerShell Cloud Shell as step 5, with the VMs running:
+
+```powershell
+cd ~/kit/templates/scripts
+./Test-LabDetections.ps1 -SubscriptionId <subscription-id> -ResourceGroupName lab-dev-va-seclab-rg-network `
+  -WorkspaceName <workspace-name> -Cloud USGov
+```
+
+It runs ten safe, documented test actions through Run command and then lists, per test, the alert and
+incident each one raised. On the domain controller the AD changes are made by a temporary admin
+(`lab.detop`), because several rules ignore changes made by SYSTEM, which is what Run command runs as.
+That account and the disposable test user both get random passwords that never leave the DC, and both
+are deleted at the end.
+
+| Test | Action | Expected Sentinel alert | Rule runs |
+|---|---|---|---|
+| AD-1 | `lab.dettest` added to *Backup Operators*, removed 20 s later | User account added to built in domain local or global group; Account added and removed from privileged groups | daily |
+| AD-2 | `lab.dettest` disabled and re-enabled | User account enabled and disabled within 10 mins | daily |
+| AD-3 | *Password never expires* set | AD account with Don't Expire Password | daily |
+| AD-4 | 6 bad passwords, then the right one | SecurityEvent - Multiple authentication failures followed by a success | every 2 h |
+| AD-5 | 25 bad passwords inside a minute | Failed logon attempts by valid accounts within 10 mins | every 10 min |
+| AD-6 | `lab.dettest` deleted minutes after creation | User account created and deleted within 10 mins; AD user enabled and password not set within 48 hours | daily |
+| LNX-1 | 20 SSH password attempts for a non-existent user, `lab-ubu01` → `lab-rhel01` | SSH - Potential Brute Force; Failed logon attempts in authpriv | daily |
+| MDE-1 | Microsoft's documented Defender for Endpoint detection test on `lab-cl02` | Defender alert → incident | minutes |
+| MDE-2 | EICAR antivirus test file on `lab-cl03` | *'EICAR_Test_File' malware was prevented* → incident | minutes |
+| MDE-3 | EICAR file + on-demand scan on `lab-ubu01` | Defender alert for EICAR | minutes |
+
+The script waits up to 25 minutes for the fast detections and prints the table every 5 minutes. A rule
+marked *daily* runs once every 24 hours from when it was created (the moment Post-Deploy enabled it), so
+re-run the same command with `-VerifyOnly` the next day; it remembers when the test ran. `-Only AD`,
+`-Only LNX` or `-Only MDE` repeats one group. Every alert also shows up as an incident in the Defender portal
+(`security.microsoft.us` → *Incidents & alerts*) and in Microsoft Sentinel → *Incidents*.
+
+The test was written and validated on the Commercial lab (see the Commercial guide, section 6.6, for that
+run's results). It uses only Run command, Az PowerShell and Log Analytics queries, all available in Azure
+Government; in GCC High the Defender alerts appear in `security.microsoft.us`.
 
 ---
 
